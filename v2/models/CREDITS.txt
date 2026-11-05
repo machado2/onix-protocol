@@ -1,0 +1,8 @@
+Modelos 3D (licença CC0 1.0, domínio público):
+- Personagens e animações: "Ultimate Modular Men Pack" e "Ultimate Modular Women Pack", por Quaternius (quaternius.com)
+- Veículos: "Car Kit", por Kenney (kenney.nl)
+Arquivos reempacotados (compressão meshopt) por tools/assetpipe/build.mjs.
+- Texturas PBR: Poly Haven (polyhaven.com), CC0 — asphalt_02, concrete_pavers_02, granite_tile, leafy_grass, weathered_planks, concrete_wall_008, concrete_panels, red_bricks_04, plastered_wall_05, worn_corrugated_iron, tarred_gravel.
+  Empacotadas em tex/pbr_alb.jpg e tex/pbr_nrm.jpg por tools/assetpipe/textures.mjs.
+- Objetos de cenário (CC0): Kenney (kenney.nl) — City Kit Roads, Nature Kit, Survival Kit, City Kit Commercial, City Kit Suburban;
+  Quaternius — Cyberpunk Game Kit (ar-condicionado, antenas, postes). Empacotados em models/props.glb por tools/assetpipe/props.mjs.

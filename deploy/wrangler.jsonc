@@ -1,0 +1,7 @@
+{
+  "name": "onix",
+  "compatibility_date": "2026-10-01",
+  "assets": { "directory": "./public" },
+  "workers_dev": false,
+  "routes": [ { "pattern": "onix.fbmac.net", "custom_domain": true } ]
+}

@@ -1,0 +1,71 @@
+{
+ "size": 512,
+ "layers": [
+  {
+   "name": "asphalt_02",
+   "scale": 0.52,
+   "lum": 0.1057,
+   "rough": 0.77
+  },
+  {
+   "name": "concrete_pavers_02",
+   "scale": 0.78,
+   "lum": 0.1268,
+   "rough": 0.874
+  },
+  {
+   "name": "granite_tile",
+   "scale": 0.6783,
+   "lum": 0.077,
+   "rough": 0.543
+  },
+  {
+   "name": "leafy_grass",
+   "scale": 0.78,
+   "lum": 0.2422,
+   "rough": 0.685
+  },
+  {
+   "name": "weathered_planks",
+   "scale": 0.78,
+   "lum": 0.0621,
+   "rough": 0.736
+  },
+  {
+   "name": "concrete_wall_008",
+   "scale": 0.5756,
+   "lum": 0.2376,
+   "rough": 0.737
+  },
+  {
+   "name": "concrete_panels",
+   "scale": 0.195,
+   "lum": 0.2473,
+   "rough": 0.95
+  },
+  {
+   "name": "red_bricks_04",
+   "scale": 0.624,
+   "lum": 0.0633,
+   "rough": 0.858
+  },
+  {
+   "name": "plastered_wall_05",
+   "scale": 0.78,
+   "lum": 0.0653,
+   "rough": 0.902
+  },
+  {
+   "name": "worn_corrugated_iron",
+   "scale": 0.8667,
+   "lum": 0.1881,
+   "rough": 0.617
+  },
+  {
+   "name": "tarred_gravel",
+   "scale": 0.7091,
+   "lum": 0.0466,
+   "rough": 0.86
+  }
+ ]
+}

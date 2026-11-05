@@ -1,0 +1,8 @@
+# downloads brutos dos pacotes CC0 (centenas de MB; ver v2/models/CREDITS.txt)
+assets_dl/
+node_modules/
+# saída do deploy (cópia gerada de v2/)
+deploy/public/
+deploy/.wrangler/
+__pycache__/
+*.pyc

@@ -1,0 +1,97 @@
+
+<canvas id="cv"></canvas>
+<canvas id="ov"></canvas>
+
+<div id="scrTitle" class="screen">
+  <div class="tbox">
+    <svg class="gem" viewBox="0 0 40 46" aria-hidden="true"><path d="M20 1 38 12v22L20 45 2 34V12Z" fill="#0b0d14" stroke="#ffa53d" stroke-width="2"/><path d="M20 1v44M2 12l18 11 18-11M20 23v22" fill="none" stroke="#ffa53d" stroke-width="1" opacity=".55"/><path d="M20 23 38 12v22L20 45Z" fill="#ffa53d" opacity=".14"/></svg>
+    <div class="eyebrow">Nova Aurora · 2091</div>
+    <div class="os">ÔNIX-OS 2.91 · TERMINAL DE CONTROLE · <b>ACESSO AUTORIZADO</b> <span class="tcur"></span></div>
+    <h1 class="logo">Protocolo<span>Ônix</span></h1>
+    <p class="tag">A cidade foi loteada entre corporações. A Ônix comanda quatro agentes ciberneticamente aprimorados e uma ambição simples: tomar cada distrito do Consórcio Hélice.</p>
+    <div class="tbtns">
+      <button class="btn pri" id="btnNovo">Nova campanha</button>
+      <button class="btn" id="btnCont" hidden>Continuar</button>
+      <button class="btn" id="btnGfx">Gráficos</button>
+    </div>
+    <div class="keys">
+      <div><b>Botão esq.</b>mover · selecionar · arrastar seleção · clicar num carro para entrar</div>
+      <div><b>Botão dir.</b>atacar · disparar · arremessar · invadir torreta</div>
+      <div><b>1–4</b>agente &nbsp;<b>0</b>todos &nbsp;<b>Q/E</b>arma &nbsp;<b>H</b>guardar &nbsp;<b>V</b>sair do carro</div>
+      <div><b>F</b>modo neural &nbsp;<b>Z/X</b>girar câmera &nbsp;<b>Espaço</b>pausa &nbsp;<b>WASD</b>câmera</div>
+    </div>
+  </div>
+  <div class="serial">ONX // CONTROLE TÁTICO // BUILD 2091.11</div>
+</div>
+
+<div id="scrMap" class="screen" hidden>
+  <div class="topbar">
+    <h1>PROTOCOLO <span>ÔNIX</span></h1>
+    <div class="stats" id="mapStats"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn sm" id="btnArs">Equipe e arsenal</button>
+      <button class="btn sm" id="btnLab">Laboratório</button>
+      <button class="btn sm" id="btnMsgs">Interceptações</button>
+      <button class="btn sm" id="btnSair">Menu</button>
+    </div>
+  </div>
+  <div class="mapwrap">
+    <div class="mapsvgbox"><div class="maplbl">MAPA TÁTICO · NOVA AURORA · NÍVEL DE ACESSO 4</div><svg id="mapSvg" viewBox="0 0 1000 620" preserveAspectRatio="xMidYMid meet"></svg></div>
+    <aside class="side" id="mapSide"></aside>
+  </div>
+</div>
+
+<div id="scrArs" class="screen" hidden>
+  <div class="topbar">
+    <h1>EQUIPE E <span>ARSENAL</span></h1>
+    <div class="stats" id="arsStats"></div>
+    <button class="btn sm" data-act="back">Voltar ao mapa</button>
+  </div>
+  <div class="arsgrid" id="arsGrid"></div>
+</div>
+
+<div id="scrLab" class="screen" hidden>
+  <div class="topbar">
+    <h1>LABORATÓRIO <span>ÔNIX</span></h1>
+    <div class="stats" id="labStats"></div>
+    <button class="btn sm" data-act="back">Voltar ao mapa</button>
+  </div>
+  <div class="labgrid" id="labGrid"></div>
+</div>
+
+<div id="hud" hidden>
+  <div id="hudTop">
+    <div class="hp" style="flex:1;min-width:220px"><span class="l">OBJETIVO</span><span id="objTxt"></span></div>
+    <div class="hp"><span class="chip" id="alPol">POLÍCIA · CALMA</span><span class="chip" id="alCorp">SEGURANÇA · ALHEIA</span><span class="chip" id="alFol">SEGUIDORES · 0</span></div>
+    <button class="hp" id="btnMenu">PAUSA<br>ESC</button>
+  </div>
+  <div id="miniBox"><div class="l">SCANNER</div><canvas id="mini" width="228" height="228"></canvas></div>
+  <div id="msgs"></div>
+  <div id="sub" aria-live="polite"></div>
+  <div id="tip" hidden role="status"><b>DICA</b><span></span><button aria-label="Fechar dica">×</button></div>
+  <div id="hudBot">
+    <div id="cards"></div>
+    <div id="invBar">
+      <div id="invSlots"></div>
+      <div id="neuro"><span class="l">PAINEL NEURAL · <span id="stabTxt"></span></span>
+        <div class="nrow">
+          <div class="dials">
+            <span class="dial" data-k="r" tabindex="0" role="slider" aria-label="Reflexo: velocidade e cadência" aria-valuemin="0" aria-valuemax="100"><i></i><b>REF</b></span>
+            <span class="dial" data-k="p" tabindex="0" role="slider" aria-label="Percepção: precisão e alcance" aria-valuemin="0" aria-valuemax="100"><i></i><b>PER</b></span>
+            <span class="dial" data-k="c" tabindex="0" role="slider" aria-label="Controle: furtividade, resistência e sonda" aria-valuemin="0" aria-valuemax="100"><i></i><b>CTR</b></span>
+          </div>
+          <div id="presets"><button data-p="0">CONTIDO</button><button data-p="1">PADRÃO</button><button data-p="2">SOBRECARGA</button></div>
+        </div>
+      </div>
+    </div>
+    <button id="btnExit" hidden>SAIR DO<br>VEÍCULO · V</button>
+    <button id="btnDrop" hidden>SOLTAR<br>CONTÊINER · G</button>
+    <button id="btnAtk">MODO<br>ATAQUE</button>
+  </div>
+  <div id="keysHint">ESQ mover · DIR atacar · clique num carro para entrar<br>Q/E arma · H guardar · F neural · V sair · Z/X girar</div>
+</div>
+
+<div id="fade"></div>
+<div id="modal" class="modal" hidden><div class="mbox" id="mbox"></div></div>
+
+<script type="module" src="js/ui.js"></script>
