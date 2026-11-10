@@ -1,6 +1,7 @@
 // Caixa de luz de letreiro: face da frente (local +Z) emite na cor da instância, com leve cintilação;
 // as laterais são metal escuro. COLOR.a < 0.5 = letreiro apagado/quebrado.
 shader_type spatial;
+#include "res://shaders/cutaway.gdshaderinc"
 render_mode cull_back;
 
 uniform float power = 3.0;
@@ -19,6 +20,7 @@ void vertex() {
 float h1(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
 
 void fragment() {
+	if (cut_away(wpos, FRAGCOORD.xy)) discard;
 	float front = smoothstep(0.6, 0.9, lnrm.z);
 	float id = h1(floor(wpos * 0.33));
 	float on = icol.a > 0.5 ? 1.0 : 0.0;

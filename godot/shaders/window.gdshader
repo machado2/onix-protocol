@@ -3,6 +3,7 @@
 // O reflexo vem do próprio vidro (rugosidade baixa) via SSR e ambiente.
 // COLOR da instância: rgb = matiz da loja (vitrines), a = chance de cômodo aceso no prédio.
 shader_type spatial;
+#include "res://shaders/cutaway.gdshaderinc"
 render_mode cull_back;
 
 uniform vec2 room = vec2(1.6, 1.6);    // tamanho do vão em metros
@@ -26,6 +27,7 @@ void vertex() {
 float h1(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
 
 void fragment() {
+	if (cut_away(wpos, FRAGCOORD.xy)) discard;
 	vec3 N = normalize(wn);
 	vec3 B = vec3(0.0, 1.0, 0.0);
 	vec3 T = normalize(cross(B, N));

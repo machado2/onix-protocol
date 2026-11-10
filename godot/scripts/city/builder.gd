@@ -71,13 +71,13 @@ func _make_materials() -> void:
 	var lb := ShaderMaterial.new()
 	lb.shader = preload("res://shaders/lightbox.gdshader")
 	mat.sign = lb
-	mat.asphalt = surf("asphalt", 4.0, Color.WHITE, {wet = 1.0, grime_amt = 0.0})
-	mat.pavers = surf("pavers", 3.0, Color.WHITE, {wet = .8, grime_amt = 0.0})
-	mat.granite = surf("granite", 4.0, Color.WHITE, {wet = .5, grime_amt = 0.0})
-	mat.soil = surf("soil", 4.0, Color.WHITE, {wet = .3, grime_amt = 0.0})
-	mat.curb = surf("concrete", 2.0, Color(.75, .75, .72), {grime_amt = .0, wet = .6})
-	mat.paint_w = surf("asphalt", 4.0, Color(1, 1, 1), {tint_k = 11.0, wet = 1.0, grime_amt = 0.0, rough_add = -.1})
-	mat.paint_y = surf("asphalt", 4.0, Color(1, .72, .1), {tint_k = 11.0, wet = 1.0, grime_amt = 0.0, rough_add = -.1})
+	mat.asphalt = surf("asphalt", 4.0, Color.WHITE, {cut_ok = 0.0, wet = 1.0, grime_amt = 0.0})
+	mat.pavers = surf("pavers", 3.0, Color.WHITE, {cut_ok = 0.0, wet = .8, grime_amt = 0.0})
+	mat.granite = surf("granite", 4.0, Color.WHITE, {cut_ok = 0.0, wet = .5, grime_amt = 0.0})
+	mat.soil = surf("soil", 4.0, Color.WHITE, {cut_ok = 0.0, wet = .3, grime_amt = 0.0})
+	mat.curb = surf("concrete", 2.0, Color(.75, .75, .72), {cut_ok = 0.0, grime_amt = .0, wet = .6})
+	mat.paint_w = surf("asphalt", 4.0, Color(1, 1, 1), {cut_ok = 0.0, tint_k = 11.0, wet = 1.0, grime_amt = 0.0, rough_add = -.1})
+	mat.paint_y = surf("asphalt", 4.0, Color(1, .72, .1), {cut_ok = 0.0, tint_k = 11.0, wet = 1.0, grime_amt = 0.0, rough_add = -.1})
 	mat.spandrel_glass = win(Vector2(3, .9), 1.0, {tint_dark = 1.0, lit_bias = -2.0})
 
 
@@ -111,7 +111,7 @@ func emit(col: Color, power := 4.0, flicker := 0.0) -> ShaderMaterial:
 
 func _prop_materials() -> void:
 	mat.metal_dark = surf("metal", 1.0, Color(.07, .075, .08), {metal = .6, rough_mul = .7, grime_amt = 0.0})
-	mat.lamp_light = emit(Color(1, .85, .65), 4.0)
+	mat.lamp_light = emit(Color(1, .85, .65), 2.0)
 	mat.ceramic = std(Color("#7a5a44"), .25)
 	mat.cable = std(Color("#060606"), .6)
 	mat.transformer = surf("metal", 1.0, Color(.42, .44, .45), {metal = .5, grime_amt = .3})
@@ -246,6 +246,7 @@ func build(map: Dictionary) -> void:
 	_make_materials()
 	_prop_materials()
 	_build_ground()
+	_build_outskirts()
 	_build_markings()
 	_build_buildings()
 	_flush()
@@ -318,6 +319,40 @@ func _build_ground() -> void:
 	_mesh_node(sts.granite, mat.granite, "praca")
 	_mesh_node(sts.soil, mat.soil, "canteiro")
 	_mesh_node(sts.curb, mat.curb, "meiofio")
+
+
+## Chão e silhuetas de prédios além das bordas do mapa, para a câmera não ver o vazio.
+func _build_outskirts() -> void:
+	var size := C.N * W
+	var plane := MeshInstance3D.new()
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(size + 400, size + 400)
+	plane.mesh = pm
+	plane.position = Vector3(size / 2, -.02, size / 2)
+	plane.material_override = mat.asphalt
+	add_child(plane)
+	var sk := ShaderMaterial.new()
+	sk.shader = preload("res://shaders/skyline.gdshader")
+	var r := C.Rng.new(99)
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for side in 4:
+		var along := -30.0
+		while along < size + 30:
+			var w := 10.0 + r.next() * 16
+			var d := 10.0 + r.next() * 16
+			var h := 12.0 + r.next() * 40
+			var off := 8.0 + r.next() * 30
+			var c: Vector3
+			match side:
+				0: c = Vector3(along, 0, -off - d / 2)
+				1: c = Vector3(along, 0, size + off + d / 2)
+				2: c = Vector3(-off - w / 2, 0, along)
+				_: c = Vector3(size + off + w / 2, 0, along)
+			_box(st, c - Vector3(w / 2, 0, d / 2), c + Vector3(w / 2, h, d / 2))
+			along += (w if side < 2 else d) + 4 + r.next() * 6
+	var mi := _mesh_node(st, sk, "periferia")
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 
 func _build_markings() -> void:

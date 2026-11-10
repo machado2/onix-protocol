@@ -5,13 +5,13 @@ class_name Character3D
 extends Node3D
 
 const VARIANTS := {
-	agent = ["agent_m", "agent_f"], guard = ["guard"], police = ["police"], vip = ["vip"], scientist = ["scientist"],
+	agent = ["agent_m", "agent_f"], enemy = ["agent_m", "agent_f"], guard = ["guard"], police = ["police"], vip = ["vip"], scientist = ["scientist"],
 	civil = ["civ_m1", "civ_m2", "civ_m3", "civ_f1", "civ_f2", "civ_f3"],
 }
 const LOOPS := ["idle", "walk", "run", "panic", "crouch", "sneak", "type", "idle_gun", "walk_gun", "run_gun", "aim", "aim_walk", "crouch_gun"]
-const ARMED := ["agent", "guard", "police"]
+const ARMED := ["agent", "enemy", "guard", "police"]
 # tingimento das roupas do MakeHuman por tipo (multiplica a textura)
-const CLOTH_TINT := {agent = Color(.32, .33, .36), guard = Color(.38, .4, .44), police = Color(.45, .5, .7)}
+const CLOTH_TINT := {agent = Color(.32, .33, .36), enemy = Color(.3, .2, .22), guard = Color(.38, .4, .44), police = Color(.45, .5, .7)}
 
 static var _scenes := {}
 static var _meta := {}
@@ -23,6 +23,8 @@ var kind := "civil"
 var variant := ""
 var current := ""
 var speeds := {}
+var armed_now := true
+var ring: MeshInstance3D
 
 
 static func _scene(v: String) -> PackedScene:
@@ -86,6 +88,9 @@ func setup(k: String, seed: int) -> void:
 	if k == "guard":
 		cols.c_top = Color("#2b2f38")
 		cols.c_accent = Color("#ff3d5a")
+	elif k == "enemy":
+		cols.c_coat = Color("#24090f")
+		cols.c_accent = Color("#ff2e4d")
 	elif k == "police":
 		cols.c_top = Color("#1e2a44")
 		cols.c_accent = Color("#d8b040")
@@ -125,7 +130,38 @@ func setup(k: String, seed: int) -> void:
 
 
 func armed() -> bool:
-	return kind in ARMED
+	return kind in ARMED and armed_now
+
+
+func set_weapon_visible(on: bool) -> void:
+	for n in ["gear_rifle", "gear_pistol"]:
+		var m := model.find_child(n, true, false)
+		if m:
+			m.visible = on
+
+
+func set_selected(on: bool) -> void:
+	if on and ring == null:
+		ring = MeshInstance3D.new()
+		var t := TorusMesh.new()
+		t.inner_radius = .42
+		t.outer_radius = .5
+		t.rings = 24
+		t.ring_segments = 6
+		ring.mesh = t
+		ring.scale = Vector3(1, .05, 1)
+		ring.position.y = .03
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.albedo_color = Color(.3, .95, 1.0)
+		m.emission_enabled = true
+		m.emission = Color(.3, .95, 1.0)
+		m.emission_energy_multiplier = 2.0
+		ring.material_override = m
+		ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(ring)
+	if ring:
+		ring.visible = on
 
 
 ## Toca uma animação; personagens armados usam a versão com arma quando existe.
@@ -136,6 +172,8 @@ func play(a: String, blend := .25, speed := 1.0, offset := 0.0) -> void:
 		return
 	current = a
 	anim.play(a, blend, speed)
+	if a.begins_with("die"):
+		anim.get_animation(a).loop_mode = Animation.LOOP_NONE
 	if offset > 0.0:
 		anim.seek(fmod(offset, anim.current_animation_length), true)
 

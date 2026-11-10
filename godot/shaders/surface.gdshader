@@ -2,6 +2,7 @@
 // Não depende de UV: peças repetidas não mostram a mesma mancha em todo vão.
 // COLOR (cor da instância do MultiMesh) tinge o albedo quando use_instance_tint = 1.
 shader_type spatial;
+#include "res://shaders/cutaway.gdshaderinc"
 render_mode cull_back, depth_draw_opaque;
 
 uniform sampler2D tex_a : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
@@ -21,6 +22,7 @@ uniform float wet = 0.0;                // chão molhado com poças
 uniform float ribs = 0.0;               // nervuras horizontais (portas de enrolar), em metros
 uniform vec3 emit : source_color = vec3(0.0);
 uniform float emit_k = 0.0;
+uniform float cut_ok = 1.0;          // 0 no chão: o recorte só vale para prédios e objetos
 
 varying vec3 wpos;
 varying vec3 wnrm;
@@ -33,6 +35,7 @@ void vertex() {
 }
 
 void fragment() {
+	if (cut_ok > 0.5 && cut_away(wpos, FRAGCOORD.xy)) discard;
 	vec3 N = normalize(wnrm);
 	vec3 an = abs(N);
 	vec2 uv;

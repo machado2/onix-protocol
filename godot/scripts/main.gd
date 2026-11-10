@@ -1,5 +1,6 @@
-## Cena principal da fatia visual: gera um distrito, monta a cidade, ambiente noturno e câmera isométrica.
-## Argumentos (depois de --): --seed=N --riq=0.6 --cam=x,z,dist,yaw,pitch,fov (metros e graus)
+## Cena principal: gera um distrito, monta a cidade e o ambiente noturno e começa uma missão (Game).
+## Argumentos (depois de --): --seed=N --riq=0.6 --mission=assassinato|extracao|sabotagem|eliminacao --dif=1..9
+## Vitrine sem jogo: --cam=x,z,dist,yaw,pitch,fov (metros e graus) com --chars, --crowd ou --view.
 extends Node3D
 
 var cam: Camera3D
@@ -8,7 +9,15 @@ func _ready() -> void:
 	var seed := 4242
 	var riq := .6
 	var camv := [84.0, 96.0, 70.0, 45.0, 42.0, 30.0]
+	var tipo: String = ["assassinato", "extracao", "sabotagem", "eliminacao"][randi() % 4]
+	var dif := 3
+	var args := OS.get_cmdline_user_args()
+	var play := not ("--chars" in args or "--crowd" in args or "--view" in args)
 	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--mission="):
+			tipo = a.substr(10)
+		elif a.begins_with("--dif="):
+			dif = int(a.substr(6))
 		if a.begins_with("--seed="):
 			seed = int(a.substr(7))
 		elif a.begins_with("--riq="):
@@ -18,7 +27,7 @@ func _ready() -> void:
 			for i in p.size():
 				camv[i] = float(p[i])
 	_environment()
-	var map := CityGen.generate(seed, riq, 1)
+	var map := CityGen.generate(seed, riq, 2 if tipo == "sabotagem" else 1)
 	if "--list" in OS.get_cmdline_user_args():
 		for b in map.blds:
 			if b.fl >= 5:
@@ -27,7 +36,15 @@ func _ready() -> void:
 	city.name = "Cidade"
 	city.focus = Vector3(camv[0], 0, camv[1])
 	add_child(city)
+	if play:
+		city.focus = Vector3(map.spawn.x * C.TILE, 0, map.spawn.y * C.TILE)
 	city.build(map)
+	if play:
+		var g := Game.new()
+		g.name = "Partida"
+		add_child(g)
+		g.start(map, city, tipo, dif, seed)
+		return
 	if "--chars" in OS.get_cmdline_user_args():
 		var kinds := ["agent", "agent", "guard", "police", "civil", "civil", "civil", "vip", "civil", "scientist", "civil", "civil"]
 		var anims := ["aim", "walk", "walk", "aim", "walk", "idle", "panic", "idle", "run", "type", "walk", "idle"]
