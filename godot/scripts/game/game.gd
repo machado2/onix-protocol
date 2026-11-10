@@ -32,17 +32,31 @@ var rot_from = null
 var hover: Unit = null
 
 var hgt := PackedFloat32Array()
+var mdef = null
+var S: MS
+var mprops: MissionProps
+# falas
+var vo_lines := {}
+var vo_player: AudioStreamPlayer
+var sub_t := 0.0
 var auto := false
+var look = null      # --look=x,y,dist,yaw: câmera fixa para capturas
 var auto_t := 2.0
 
 
-func start(map: Dictionary, builder: CityBuilder, tipo: String, dif: int, seed: int) -> void:
+func start(map: Dictionary, builder: CityBuilder, tipo: String, dif: int, seed: int, pre: Mission = null, def = null) -> void:
 	city = builder
-	M = Mission.new()
-	M.setup(map, tipo, dif, seed)
 	var squad := [["smg", "pistola", "granada", "medkit"], ["smg", "sonda", "granada"], ["escopeta", "pistola", "granada"], ["feixe", "pistola", "medkit"]]
-	M.populate(squad)
+	if pre:
+		M = pre
+		M.setup(map, tipo, dif, seed)
+		M.spawn_squad(squad)
+	else:
+		M = Mission.new()
+		M.setup(map, tipo, dif, seed)
+		M.populate(squad)
 	sim = Sim.new(M)
+	mdef = def
 	hgt.resize(C.N * C.N)
 	for i in C.N * C.N:
 		hgt[i] = 0.0 if M.tile[i] == C.T.ROAD else C.CURB
@@ -54,6 +68,10 @@ func start(map: Dictionary, builder: CityBuilder, tipo: String, dif: int, seed: 
 	sim.log_msg.connect(func(t, c):
 		hud.add_log(t, c)
 		print("[%5.1f] %s" % [M.t, t]))
+	mprops = MissionProps.new()
+	mprops.name = "ObjetosDeMissao"
+	add_child(mprops)
+	mprops.setup(self)
 	for u in M.units:
 		_make_view(u)
 	cam = Camera3D.new()
@@ -67,11 +85,17 @@ func start(map: Dictionary, builder: CityBuilder, tipo: String, dif: int, seed: 
 	add_child(hud)
 	hud.setup(self)
 	sim.set_sel(M.agents.duplicate())
+	_setup_vo()
+	if mdef != null:
+		S = MS.new(M, sim, self)
+		mdef.run(S, M)
 	hud.add_log("Missão: %s. %s" % [GD.TIPOS[tipo], M.objective_text()], "cyan")
 	auto = "--auto" in OS.get_cmdline_user_args()
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--speed="):
 			speed = float(a.substr(8))
+		elif a.begins_with("--look="):
+			look = a.substr(7).split(",")
 	hud.add_log("Clique para mover · botão direito ataca · arraste para selecionar · Z/X giram a câmera.", "")
 
 
@@ -97,14 +121,22 @@ func _view_kind(u: Unit) -> String:
 	return "civil"
 
 
+func _view_kind_of(u: Unit) -> String:
+	return u.view_kind if u.view_kind != "" else _view_kind(u)
+
+
 func _make_view(u: Unit) -> void:
+	if u.kind == "drone":
+		u.view = mprops.drone_view()
+		add_child(u.view)
+		return
 	if u.kind == "torre":
 		u.view = _turret()
 		add_child(u.view)
 		return
 	var ch := Character3D.new()
 	add_child(ch)
-	ch.setup(_view_kind(u), u.seed)
+	ch.setup(_view_kind_of(u), u.seed)
 	u.view = ch
 
 
@@ -152,7 +184,16 @@ func _update_views(dt: float) -> void:
 		var v = u.view
 		if v == null:
 			continue
-		var p := _world(u.x, u.y, ground_at(u.x, u.y))
+		v.visible = u.in_car == null and not u.vanished
+		if not v.visible:
+			continue
+		var p := _world(u.x, u.y, ground_at(u.x, u.y) + (2.6 + sin(M.t * 3 + u.id) * .15 if u.fly else 0.0))
+		if u.kind == "drone":
+			v.position = v.position.lerp(p, minf(1.0, dt * 10.0))
+			v.rotation.y = lerp_angle(v.rotation.y, atan2(cos(u.face), sin(u.face)), minf(1, dt * 8))
+			if u.dead:
+				v.visible = u.death_t < .2
+			continue
 		v.position = v.position.lerp(p, minf(1.0, dt * 20.0)) if v.position.distance_to(p) < 3 else p
 		var goal := atan2(cos(u.face), sin(u.face))
 		if u.kind == "torre":
@@ -205,13 +246,27 @@ func _process(dt: float) -> void:
 		var n := 0
 		while acc >= STEP and n < 16:
 			sim.update(STEP)
+			if S:
+				S.tick.emit()
 			acc -= STEP
 			n += 1
-	if auto and not M.ended:
+	if look != null and not M.cine:
+		cam_target = _world(float(look[0]), float(look[1]))
+		cam_dist_goal = float(look[2])
+		cam_dist = cam_dist_goal
+		if look.size() > 3:
+			cam_yaw_goal = float(look[3])
+			cam_yaw = cam_yaw_goal
+	if M.cine and "--skipcine" in OS.get_cmdline_user_args():
+		M.cine_skip = true
+	if auto and not M.ended and not M.cine:
 		_autoplay(dt)
 	_update_views(dt)
 	_update_camera(dt)
 	fxl.tick(dt)
+	mprops.tick(dt)
+	_events()
+	sub_t = maxf(0, sub_t - dt)
 	hud.refresh()
 
 
@@ -239,6 +294,24 @@ func _autoplay(dt: float) -> void:
 		sim.issue_attack(best)
 		return
 	var goal = null
+	if M.hand:
+		for tm in M.terms:
+			if not tm.done:
+				goal = Vector2(tm.x, tm.y)
+				break
+		if M.sci and not M.sci.dead and not M.sci.follow:
+			goal = M.sci.pos2()
+		elif M.vip and not M.vip.dead:
+			goal = M.vip.pos2()
+		if goal == null:
+			for u in M.units:
+				if (u.kind == "inimigo" or u.kind == "guarda") and not u.dead and not u.follower:
+					goal = u.pos2()
+					break
+		if goal == null:
+			goal = M.spawn
+		sim.issue_move(goal)
+		return
 	match M.tipo:
 		"assassinato": goal = M.vip.pos2() if M.vip and not M.vip.dead else null
 		"extracao": goal = M.sci.pos2() if not M.sci.follow else M.evac
@@ -271,6 +344,8 @@ func _update_camera(dt: float) -> void:
 		if mp.x > vs.x - 6: pan.x += 1
 		if mp.y < 6: pan.y -= 1
 		if mp.y > vs.y - 6: pan.y += 1
+	if M.cine:
+		pan = Vector2.ZERO
 	if pan != Vector2.ZERO:
 		var yr := deg_to_rad(cam_yaw)
 		var fwd := Vector3(-sin(yr), 0, -cos(yr))
@@ -278,6 +353,16 @@ func _update_camera(dt: float) -> void:
 		cam_target += (right * pan.x - fwd * pan.y) * dt * cam_dist * .9
 	cam_target.x = clampf(cam_target.x, 0, C.N * W)
 	cam_target.z = clampf(cam_target.z, 0, C.N * W)
+	if M.cam_goal != null:
+		var g: Dictionary = M.cam_goal
+		if g.from == null:
+			g.from = [cam_target, cam_dist_goal]
+		g.t += dt
+		var k := smoothstep(0.0, 1.0, clampf(g.t / maxf(g.dur, .01), 0, 1))
+		cam_target = g.from[0].lerp(_world(g.p.x, g.p.y), k)
+		cam_dist_goal = lerpf(g.from[1], 34.0 / g.z, k)
+		if g.t >= g.dur and not M.cine:
+			M.cam_goal = null
 	cam_yaw = lerpf(cam_yaw, cam_yaw_goal, minf(1, dt * 8))
 	cam_dist = lerpf(cam_dist, cam_dist_goal, minf(1, dt * 10))
 	shake = maxf(0, shake - dt * 2)
@@ -341,6 +426,10 @@ func pick_unit(sp: Vector2) -> Unit:
 func _unhandled_input(e: InputEvent) -> void:
 	if M == null:
 		return
+	if M.cine:
+		if e is InputEventKey and e.pressed and (e.keycode in [KEY_SPACE, KEY_ESCAPE, KEY_ENTER]):
+			M.cine_skip = true
+		return
 	if e is InputEventMouseButton:
 		var mb := e as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_WHEEL_UP and mb.pressed:
@@ -391,6 +480,7 @@ func _unhandled_input(e: InputEvent) -> void:
 						sim.set_sel([a])
 			KEY_0, KEY_QUOTELEFT:
 				sim.set_sel(M.agents.filter(func(x): return not x.dead))
+			KEY_G: sim.drop_container()
 			KEY_Q: sim.cycle_weapon(-1)
 			KEY_E: sim.cycle_weapon(1)
 			KEY_H: sim.holster()
@@ -457,9 +547,60 @@ func _box_select(a: Vector2, b: Vector2, shift: bool) -> void:
 func _on_fx(kind: String, d: Dictionary) -> void:
 	match kind:
 		"spawn":
-			_make_view(d.u)
+			if d.u.view == null:
+				_make_view(d.u)
+		"car":
+			mprops.car_view(d.c)
+		"reveal":
+			var u: Unit = d.u
+			u.view_kind = "enemy"
+			if u.view:
+				u.view.queue_free()
+				u.view = null
+			_make_view(u)
 		"explosion":
 			shake = minf(1.0, shake + .6)
 		"end":
 			hud.show_end(d.win, M.reason)
 	fxl.event(kind, d)
+
+
+
+# ---------------------------------------------------------------- falas com legenda
+func _setup_vo() -> void:
+	var f := FileAccess.open("res://assets/audio/vo.json", FileAccess.READ)
+	if f:
+		vo_lines = JSON.parse_string(f.get_as_text())
+	vo_player = AudioStreamPlayer.new()
+	vo_player.bus = "Master"
+	add_child(vo_player)
+	if "--mute" in OS.get_cmdline_user_args():
+		vo_player.volume_db = -80
+
+
+func say(key: String) -> void:
+	var opts = vo_lines.get(key, vo_lines.get(key + ":m", vo_lines.get(key + ":f", null)))
+	if opts == null or opts.is_empty():
+		return
+	var line: Array = opts[randi() % opts.size()]
+	var txt: String = line[1]
+	hud.subtitle(txt)
+	sub_t = 1.5 + txt.length() * .055
+	var path := "res://assets/audio/vo/%s.mp3" % line[0]
+	if ResourceLoader.exists(path):
+		vo_player.stream = load(path)
+		vo_player.play()
+		sub_t = maxf(sub_t, vo_player.stream.get_length() + .3)
+
+
+func talking() -> bool:
+	return sub_t > 0 or vo_player.playing
+
+
+# ---------------------------------------------------------------- mudanças no mapa vindas da simulação
+func _events() -> void:
+	if M.events.is_empty():
+		return
+	for e in M.events:
+		mprops.event(e)
+	M.events.clear()

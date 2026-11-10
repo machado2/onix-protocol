@@ -27,7 +27,19 @@ func _ready() -> void:
 			for i in p.size():
 				camv[i] = float(p[i])
 	_environment()
-	var map := CityGen.generate(seed, riq, 2 if tipo == "sabotagem" else 1)
+	var hand_def = Missions.script_for(tipo) if Missions.DIST.has(tipo) else null
+	var hand_m: Mission = null
+	var map: Dictionary
+	if hand_def != null:
+		hand_m = Mission.new()
+		hand_m.hand = true
+		hand_m.def_name = tipo
+		var B := MB.new(hand_m)
+		hand_def.build(B)
+		map = B.to_map(hand_def.SPAWN)
+		dif = Missions.DIST[tipo].dif
+	else:
+		map = CityGen.generate(seed, riq, 2 if tipo == "sabotagem" else 1)
 	if "--list" in OS.get_cmdline_user_args():
 		for b in map.blds:
 			if b.fl >= 5:
@@ -43,7 +55,10 @@ func _ready() -> void:
 		var g := Game.new()
 		g.name = "Partida"
 		add_child(g)
-		g.start(map, city, tipo, dif, seed)
+		if hand_def != null:
+			g.start(map, city, Missions.DIST[tipo].tipo, dif, seed, hand_m, hand_def)
+		else:
+			g.start(map, city, tipo, dif, seed)
 		return
 	if "--chars" in OS.get_cmdline_user_args():
 		var kinds := ["agent", "agent", "guard", "police", "civil", "civil", "civil", "vip", "civil", "scientist", "civil", "civil"]

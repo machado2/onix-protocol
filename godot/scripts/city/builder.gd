@@ -230,8 +230,14 @@ func _flush() -> void:
 # ---------------------------------------------------------------- mapa
 func tile_at(x: int, y: int) -> int:
 	if x < 0 or y < 0 or x >= C.N or y >= C.N:
-		return T.ROAD
+		return T.WATER if M.get("hand", false) and _edge_water(x, y) else T.ROAD
 	return M.tile[y * C.N + x]
+
+
+func _edge_water(x: int, y: int) -> bool:
+	var cx := clampi(x, 0, C.N - 1)
+	var cy := clampi(y, 0, C.N - 1)
+	return M.tile[cy * C.N + cx] == T.WATER
 
 
 func hgt_at(x: int, y: int) -> int:
@@ -294,6 +300,14 @@ func _build_ground() -> void:
 			if t == T.ROAD:
 				_quad(sts.asphalt, Vector3(x0, 0, z0), Vector3(x1, 0, z0), Vector3(x1, 0, z1), Vector3(x0, 0, z1), Vector3.UP)
 				continue
+			if t == T.WATER:
+				continue
+			# muro do cais onde a terra encontra a água
+			for d in [[0, 1], [0, -1], [1, 0], [-1, 0]]:
+				if tile_at(x + d[0], y + d[1]) == T.WATER:
+					var a := Vector3(x0 + W * .5 + d[0] * W * .5, 0, z0 + W * .5 + d[1] * W * .5)
+					var e := Vector3(.1 if d[0] != 0 else W * .5, 0, .1 if d[1] != 0 else W * .5)
+					_box(sts.curb, a - e - Vector3(0, 2.0, 0), a + e + Vector3(0, C.CURB + .02, 0))
 			var k := "pavers"
 			if t == T.PLAZA:
 				k = "granite"
@@ -400,6 +414,8 @@ func _build_markings() -> void:
 func _style(b: Dictionary) -> String:
 	if b.get("corp", false):
 		return "B"
+	if b.get("favela", false) or b.pal >= 6:
+		return "C"
 	var h := C.hash01(b.x, b.y, 3.0)
 	if b.fl >= 7 and h < .35:
 		return "B"
@@ -410,6 +426,8 @@ func _style(b: Dictionary) -> String:
 
 func _build_buildings() -> void:
 	for b in M.blds:
+		if b.get("style", "") in ["cont", "ware", "wall", "hedge"]:
+			continue   # feitos por MissionProps
 		if b.get("kiosk", false):
 			continue
 		_building(b)

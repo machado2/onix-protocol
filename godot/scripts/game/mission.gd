@@ -38,6 +38,35 @@ var end_t := 0.0
 var last_combat := -99.0
 var stats := {abates = 0, civis = 0, policiais = 0, seguidores = 0}
 var astar := AStarGrid2D.new()
+# missões feitas à mão
+var hand := false
+var def_name := ""
+var flags := {}
+var ex := {}              # dados livres do roteiro (reatores, candidatos, célula...)
+var objs: Array = []      # {id, text, primary, state}
+var timer = null          # {label, end}
+var bonus: Array = []     # {text, val}
+var cams: Array = []      # {x, y, base, a, sweep, spd, ph, fov, range, see, dead, off, strict, spot}
+var lasers: Array = []    # {x1, y1, x2, y2, off, on, per, ph, duty, trip_t, dmg, sweep}
+var vents: Array = []     # {x, y, per, dur, ph, r, dmg, state}
+var lamps: Array = []     # dicionários do mapa (compartilhados com a cidade 3D)
+var decor: Array = []
+var rail = null
+var train = null
+var train_t := 12.0
+var glass_n := 0
+var glass_q: Array = []
+var falling: Array = []
+var drop_point = null
+var vent_over := 0.0
+var vent_src: Unit = null
+var evacs: Array = []
+var esc_car = null
+var revealed := 0
+var cine := false
+var cine_skip := false
+var cam_goal = null       # {p: Vector2, z, dur, t}
+var events: Array = []    # avisos para a cena 3D (prédio destruído, vidro quebrado, poste apagado...)
 var uid := 0
 var rng := C.Rng.new(1)
 
@@ -242,6 +271,9 @@ func mk_unit(kind: String, px: float, py: float) -> Unit:
 		u.max_hp = u.hp
 	if kind == "torre":
 		u.mech = true
+	if kind == "drone":
+		u.mech = true
+		u.fly = true
 	units.append(u)
 	return u
 
@@ -367,6 +399,10 @@ func populate(squad_inv: Array) -> void:
 		var p = _rand_tile(is_side)
 		if p != null:
 			mk_unit("civil", p.x, p.y)
+	spawn_squad(squad_inv)
+
+
+func spawn_squad(squad_inv: Array) -> void:
 	var offs := [Vector2(-.5, -.5), Vector2(.5, -.5), Vector2(-.5, .5), Vector2(.5, .5)]
 	for k in squad_inv.size():
 		mk_agent(k, spawn.x + offs[k].x, spawn.y + offs[k].y, squad_inv[k])

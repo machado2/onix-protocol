@@ -117,6 +117,8 @@ func police_sees(px: float, py: float, r: float) -> bool:
 
 
 func noise(px: float, py: float, r: float, src: Unit) -> void:
+	if M.flags.get("trainNoise", false):
+		r *= .35
 	for v in M.units:
 		if v.dead or v.follower:
 			continue
@@ -197,6 +199,22 @@ func fire_weapon(u: Unit, wk: String, st, tx: float, ty: float, acc_mul := 1.0, 
 	var mx := u.x + cos(ang) * .45
 	var my := u.y + sin(ang) * .45
 	fx.emit("muzzle", {x = mx, y = my, laser = w.get("laser", false), u = u, wk = wk})
+	if w.get("flame", false):
+		for v in M.units:
+			if v == u or v.dead or v.fac == u.fac or v.in_car != null:
+				continue
+			var dvx := v.x - u.x
+			var dvy := v.y - u.y
+			if sqrt(dvx * dvx + dvy * dvy) > rng:
+				continue
+			var da := absf(angle_difference(atan2(dvy, dvx), ang))
+			if da < .34 and M.los(u.x, u.y, v.x, v.y):
+				hurt(v, w.dano, u)
+				v.burn = maxf(v.burn, 2.5)
+				v.burn_src = u
+		fx.emit("flame", {x = mx, y = my, ang = ang, r = rng})
+		noise(u.x, u.y, 7, u)
+		return true
 	if w.get("laser", false):
 		var dx := cos(ang)
 		var dy := sin(ang)
@@ -229,7 +247,7 @@ func bullet(u: Unit, a: float, rng: float, dmg: float, mx: float, my: float) -> 
 	var bt := wt
 	var prop = null
 	for v in M.units:
-		if v == u or v.dead or v.fac == u.fac or (u.fac == "player" and v.kind == "cientista"):
+		if v == u or v.dead or v.fac == u.fac or v.in_car != null or v.hold or (u.fac == "player" and v.kind == "cientista"):
 			continue
 		var rx := v.x - u.x
 		var ry := v.y - u.y
@@ -251,6 +269,39 @@ func bullet(u: Unit, a: float, rng: float, dmg: float, mx: float, my: float) -> 
 			prop = p
 			best = null
 			bt = tt
+	var car = null
+	for c in M.cars:
+		if c.dead or c.occ.any(func(o): return o.fac == u.fac):
+			continue
+		var rx: float = c.x - u.x
+		var ry: float = c.y - u.y
+		var tt := rx * dx + ry * dy
+		if tt < .3 or tt > bt:
+			continue
+		if absf(rx * dy - ry * dx) < .5:
+			car = c
+			best = null
+			prop = null
+			bt = tt
+	for c in M.cams:
+		if c.dead:
+			continue
+		var rx: float = c.x - u.x
+		var ry: float = c.y - u.y
+		var tt := rx * dx + ry * dy
+		if tt < .3 or tt > bt:
+			continue
+		if absf(rx * dy - ry * dx) < .25:
+			hurt_cam(c)
+			break
+	if M.glass_n > 0:
+		var gs := .25
+		while gs < bt:
+			var gx := int(u.x + dx * gs)
+			var gy := int(u.y + dy * gs)
+			if gx >= 0 and gy >= 0 and gx < N and gy < N and M.tile[gy * N + gx] == T.GLASS:
+				shatter_glass(gx, gy)
+			gs += .2
 	if best and u.dist_to(best) > 1.6 and cover_at(best.x, best.y, Vector2(u.x, u.y)) and randf() < .5:
 		bt = maxf(.2, bt - .45)
 		best = null
@@ -276,11 +327,20 @@ func bullet(u: Unit, a: float, rng: float, dmg: float, mx: float, my: float) -> 
 		hurt(best, dmg, u)
 	elif prop:
 		hurt_prop(prop, dmg, u)
+	elif car != null:
+		hurt_car(car, dmg, u)
 
 
 func hurt(v: Unit, dmg: float, src: Unit) -> void:
 	if v.dead:
 		return
+	if v.shield:
+		fx.emit("shield", {x = v.x, y = v.y})
+		if src and src.fac == "player" and v.fac == "corp":
+			alert_corp(v, src.x, src.y)
+		return
+	if v.hold:
+		dmg *= .3
 	if v.kind == "agente":
 		dmg *= 1 - NEURO.res
 	v.hp -= dmg * (1 - v.armor)
@@ -290,6 +350,8 @@ func hurt(v: Unit, dmg: float, src: Unit) -> void:
 		fx.emit("blood", {x = v.x, y = v.y})
 	if src and src.fac == "player" and src != v:
 		if v.fac == "corp":
+			if v.disguise:
+				reveal(v)
 			alert_corp(v, src.x, src.y)
 		if v.fac == "police":
 			trigger_police("O esquadrão atacou a polícia.")
@@ -310,7 +372,17 @@ func kill(v: Unit, src: Unit) -> void:
 	v.hj = 0
 	if v.kind == "torre":
 		explode(v.x, v.y, 1.2, 25, src)
+		fx.emit("death", {u = v})
 		return
+	if v.kind == "drone":
+		explode(v.x, v.y, .9, 14, src)
+		if src and src.fac == "player" and v.fac != "player":
+			M.stats.abates += 1
+		fx.emit("death", {u = v})
+		return
+	if v.rival != "" and not v.vanished:
+		M.bonus.append({text = "Ponteiro eliminado: " + v.nome, val = 3000})
+		say_log("%s está morto." % v.nome, "green")
 	var drop_w := cur_w(v) if is_armed(v) else ""
 	if drop_w != "":
 		M.drops.append({x = v.x + (randf() - .5) * .3, y = v.y + (randf() - .5) * .3, t = drop_w})
@@ -329,7 +401,7 @@ func kill(v: Unit, src: Unit) -> void:
 		M.sel.erase(v)
 		v.sel = false
 	if v.kind == "vip":
-		say_log("Alvo eliminado: %s." % v.nome, "green")
+		say_log("Um sósia foi abatido." if v.double else "Alvo eliminado: %s." % v.nome, "amber" if v.double else "green")
 	if v.kind == "cientista":
 		say_log("%s foi morta no fogo cruzado." % v.nome, "red")
 	fx.emit("death", {u = v})
@@ -357,6 +429,21 @@ func explode(px: float, py: float, r: float, dmg: float, src: Unit) -> void:
 	for p in M.props:
 		if not p.dead and Vector2(p.x - px, p.y - py).length() < r + .3:
 			hurt_prop(p, 999, src)
+	for c in M.cars:
+		if not c.dead and Vector2(c.x - px, c.y - py).length() < r + .6:
+			hurt_car(c, dmg * .8, src)
+	for c in M.cams:
+		if not c.dead and Vector2(c.x - px, c.y - py).length() < r + .5:
+			hurt_cam(c)
+	if M.glass_n > 0:
+		for gy in range(maxi(0, int(py - r - 1)), mini(N, int(py + r + 2))):
+			for gx in range(maxi(0, int(px - r - 1)), mini(N, int(px + r + 2))):
+				if M.tile[gy * N + gx] == T.GLASS and Vector2(gx + .5 - px, gy + .5 - py).length() < r + .6:
+					shatter_glass(gx, gy)
+	for l in M.lamps:
+		if not l.get("dead", false) and Vector2(l.x - px, l.y - py).length() < r + .6:
+			l.dead = true
+			M.events.append({k = "lamp", l = l})
 	noise(px, py, 16, src)
 
 
@@ -670,6 +757,28 @@ func upd_police(u: Unit, dt: float) -> void:
 
 
 func upd_guard(u: Unit, dt: float) -> void:
+	if u.flee_to != null:
+		if M.esc_car != null and M.esc_car.dead:
+			u.flee_to = null
+			u.path = []
+		else:
+			if Vector2(u.x - u.flee_to.x, u.y - u.flee_to.y).length() < 1.4:
+				u.path = []
+				u.cur_spd = 0
+				u.board_t += dt
+				if u.board_t > 4:
+					u.dead = true
+					u.vanished = true
+					u.hp = 0
+					M.flags.escaped = M.flags.get("escaped", 0) + 1
+					fx.emit("vanish", {u = u})
+			else:
+				if u.path.is_empty():
+					M.path_to(u, u.flee_to.x, u.flee_to.y)
+				M.move_along(u, dt, u.spd * 1.1)
+			return
+	if u.rival != "" and rival_tick(u, dt):
+		return
 	if not u.alerted:
 		if u.kind == "inimigo" and M.corp_alert:
 			u.alerted = true
@@ -715,6 +824,15 @@ func upd_guard(u: Unit, dt: float) -> void:
 
 
 func upd_vip(u: Unit, dt: float) -> void:
+	if u.safe:
+		u.path = []
+		u.cur_spd = 0
+		return
+	if u.scripted and not M.corp_alert and not u.alerted:
+		detect(u, dt, 6, 3)
+		if not M.move_along(u, dt, u.spd):
+			u.cur_spd = 0
+		return
 	if not M.corp_alert and not u.alerted:
 		detect(u, dt, 6, 3)
 		if u.path.is_empty():
@@ -727,10 +845,14 @@ func upd_vip(u: Unit, dt: float) -> void:
 				u.idle_t = 4 + randf() * 3
 		M.move_along(u, dt, u.spd)
 		return
+	if M.escape == null:
+		wander(u, dt, u.x, u.y, 4, 1.2)
+		return
 	if not u.fleeing:
 		u.fleeing = true
 		u.path = []
-		say_log("%s está fugindo para o transporte de evacuação!" % u.nome, "amber")
+		if not u.double:
+			say_log(u.flee_msg if u.flee_msg != "" else "%s está fugindo para o transporte de evacuação!" % u.nome, "amber")
 	if u.path.is_empty():
 		u.rep_t -= dt
 		if u.rep_t <= 0:
@@ -738,10 +860,24 @@ func upd_vip(u: Unit, dt: float) -> void:
 			M.path_to(u, M.escape.x, M.escape.y)
 	M.move_along(u, dt, u.spd * 1.2)
 	if Vector2(u.x - M.escape.x, u.y - M.escape.y).length() < 1.3 and not M.ended:
-		end_mission(false, "%s alcançou o transporte e escapou." % u.nome)
+		if u.double:
+			u.dead = true
+			u.vanished = true
+			u.hp = 0
+			fx.emit("vanish", {u = u})
+		elif u.safe_room:
+			u.safe = true
+			u.path = []
+		else:
+			M.flags.heliGo = true
+			end_mission(false, "%s alcançou o transporte e escapou." % u.nome)
 
 
 func upd_sci(u: Unit, dt: float) -> void:
+	if u.hold:
+		if not M.move_along(u, dt, u.spd):
+			u.cur_spd = 0
+		return
 	if not u.follow:
 		u.cur_spd = 0
 		var a := nearest_agent(u, 1.9)
@@ -765,6 +901,8 @@ func upd_sci(u: Unit, dt: float) -> void:
 
 
 func upd_turret(u: Unit, dt: float) -> void:
+	if u.off:
+		return
 	if u.fac == "corp" and not u.alerted:
 		u.face += dt * .7
 		detect(u, dt, 6.5, 4.5)
@@ -895,6 +1033,16 @@ func upd_agent(u: Unit, dt: float) -> void:
 		tm.prog += dt
 		if tm.prog >= 4:
 			tm.done = true
+			fx.emit("hack", {x = tm.x, y = tm.y})
+			if tm.get("flag", "") != "":
+				M.flags[tm.flag] = true
+				if tm.get("msg", "") != "":
+					say_log(tm.msg, "cyan")
+				continue
+			if tm.get("crane", false):
+				M.flags.crane = true
+				say_log("Cabine do guindaste invadida. Tecla G solta o contêiner.", "cyan")
+				continue
 			say_log("Terminal invadido (%d/%d)." % [M.terms.filter(func(q): return q.done).size(), M.terms.size()], "cyan")
 			noise(tm.x, tm.y, 9, u)
 			fx.emit("hack", {x = tm.x, y = tm.y})
@@ -905,11 +1053,11 @@ func separate() -> void:
 	var U := M.units
 	for i in U.size():
 		var a := U[i]
-		if a.dead or a.mech:
+		if a.dead or a.mech or a.in_car != null or a.hold or a.fly:
 			continue
 		for j in range(i + 1, U.size()):
 			var b := U[j]
-			if b.dead or b.mech:
+			if b.dead or b.mech or b.in_car != null or b.hold or b.fly:
 				continue
 			var dx := b.x - a.x
 			var dy := b.y - a.y
@@ -964,6 +1112,11 @@ func update(dt: float) -> void:
 				continue
 			if u.kind == "civil" and not u.follower:
 				u.panic_t = 3
+		if u.in_car != null:
+			u.x = u.in_car.x
+			u.y = u.in_car.y
+			u.cur_spd = 0
+			continue
 		if u.hj_t > 0:
 			u.hj_t -= dt
 			u.path = []
@@ -971,8 +1124,11 @@ func update(dt: float) -> void:
 			continue
 		if u.hj > 0:
 			u.hj = maxf(0, u.hj - dt * .3)
-		if u.follower:
+		if u.follower and u.kind != "drone":
 			upd_follower(u, dt)
+			continue
+		if u.disguise:
+			upd_disguise(u, dt)
 			continue
 		match u.kind:
 			"agente": upd_agent(u, dt)
@@ -982,8 +1138,16 @@ func update(dt: float) -> void:
 			"vip": upd_vip(u, dt)
 			"cientista": upd_sci(u, dt)
 			"torre": upd_turret(u, dt)
+			"drone": upd_drone(u, dt)
 	separate()
+	upd_cars(dt)
 	upd_nades(dt)
+	if not M.cams.is_empty(): upd_cams(dt)
+	if not M.lasers.is_empty(): upd_lasers(dt)
+	if not M.vents.is_empty(): upd_vents(dt)
+	if M.rail != null: upd_train(dt)
+	if not M.glass_q.is_empty(): upd_glass()
+	if not M.falling.is_empty(): upd_falling(dt)
 	if M.police_aggro > 0:
 		M.police_aggro -= dt
 		if M.police_aggro <= 0:
@@ -1019,6 +1183,8 @@ func spawn_reinforcements() -> void:
 func check_end() -> void:
 	if not M.agents.any(func(a): return not a.dead):
 		end_mission(false, "Todo o esquadrão foi abatido.")
+		return
+	if M.hand:
 		return
 	match M.tipo:
 		"assassinato":
@@ -1145,3 +1311,509 @@ func use_slot(i: int) -> void:
 		if idx >= 0:
 			u.eq = idx
 			u.ord = null
+
+
+# ---------------------------------------------------------------- disfarces
+func reveal(u: Unit) -> void:
+	if not u.disguise:
+		return
+	u.disguise = false
+	u.dance = false
+	u.alerted = false
+	M.revealed += 1
+	fx.emit("reveal", {u = u})
+	alert_corp(u, u.x, u.y)
+	u.alerted = true
+
+
+func upd_disguise(u: Unit, dt: float) -> void:
+	if u.alerted:
+		reveal(u)
+		return
+	var near := false
+	for a in M.agents:
+		if not a.dead and u.dist_to(a) < 2.6:
+			near = true
+			break
+	u.reveal_p = u.reveal_p + dt if near else maxf(0, u.reveal_p - dt * .5)
+	if u.reveal_p >= 1.6:
+		reveal(u)
+		return
+	if u.dance:
+		u.path = []
+		u.cur_spd = 0
+		return
+	var h: Vector2 = u.home if u.home != null else Vector2(u.x, u.y)
+	wander(u, dt, h.x, h.y, 5, .9)
+
+
+# ---------------------------------------------------------------- Ponteiros
+func spawn_rival(id: String, px: float, py: float) -> Unit:
+	if not GD.RIVALS.has(id):
+		return null
+	var R: Dictionary = GD.RIVALS[id]
+	var u := M.mk_unit("inimigo", px, py)
+	u.rival = id
+	u.nome = R.nome
+	u.w = R.w
+	u.mun = GD.WD[R.w].pente
+	u.hp = R.hp
+	u.max_hp = R.hp
+	u.armor = R.armor
+	u.spd = R.spd
+	u.acc = R.acc
+	u.nades = 2
+	u.home = Vector2(px, py)
+	u.view_kind = "enemy"
+	fx.emit("spawn", {u = u})
+	return u
+
+
+func rival_tick(u: Unit, dt: float) -> bool:
+	var R: Dictionary = GD.RIVALS.get(u.rival, {})
+	if u.escaping:
+		u.esc_t -= dt
+		M.move_along(u, dt, u.spd * 1.4)
+		if u.path.is_empty() or u.esc_t <= 0 or u.x < 1.3 or u.y < 1.3 or u.x > N - 1.3 or u.y > N - 1.3:
+			u.dead = true
+			u.vanished = true
+			u.hp = 0
+			say_log("%s escapou." % u.nome, "amber")
+			fx.emit("vanish", {u = u})
+		return true
+	if not R.get("hq_only", false) and u.hp < u.max_hp * .3:
+		u.escaping = true
+		u.esc_t = 10
+		u.tgt = null
+		var ex := [Vector2(1, u.y), Vector2(N - 1.5, u.y), Vector2(u.x, 1), Vector2(u.x, N - 1.5)]
+		ex.sort_custom(func(a, b): return a.distance_to(u.pos2()) < b.distance_to(u.pos2()))
+		M.path_to(u, ex[0].x, ex[0].y)
+		return true
+	return false
+
+
+# ---------------------------------------------------------------- drones
+func fly_to(u: Unit, px: float, py: float, dt: float, s: float) -> bool:
+	var d := Vector2(px - u.x, py - u.y)
+	var l := d.length()
+	if l < .2:
+		u.cur_spd = 0
+		return true
+	var st := minf(l, s * GD.SPEED * dt)
+	u.x = clampf(u.x + d.x / l * st, 1, N - 1)
+	u.y = clampf(u.y + d.y / l * st, 1, N - 1)
+	u.cur_spd = s * GD.SPEED
+	if u.aim_t <= 0:
+		u.face = atan2(d.y, d.x)
+	return false
+
+
+func orbit(u: Unit, p: Vector2, R: float, dt: float) -> void:
+	var dir := 1.0 if u.id % 2 else -1.0
+	var a := atan2(u.y - p.y, u.x - p.x) + .45 * dir
+	for r in [R, R * .7, R * .45]:
+		var tx: float = p.x + cos(a) * r
+		var ty: float = p.y + sin(a) * r
+		if M.can_stand(tx, ty):
+			fly_to(u, tx, ty, dt, u.spd)
+			return
+	fly_to(u, p.x, p.y, dt, u.spd * .5)
+
+
+func upd_drone(u: Unit, dt: float) -> void:
+	u.path = []
+	if u.off:
+		u.cur_spd = 0
+		return
+	if u.fac == "player":
+		var t := nearest_hostile(u, 7.5)
+		if t:
+			aim_at(u, t.x, t.y)
+			fire_weapon(u, u.w, u, t.x, t.y)
+		var a := nearest_agent(u, 999)
+		if a:
+			if u.dist_to(a) > 2.4:
+				fly_to(u, a.x + cos(u.id) * 1.3, a.y + sin(u.id) * 1.3, dt, u.spd * 1.2)
+			else:
+				u.cur_spd = 0
+		return
+	if not u.alerted:
+		detect(u, dt, 7.5, 4.2)
+		if not u.alerted and M.corp_alert and nearest_agent(u, 14):
+			u.alerted = true
+		if not u.alerted:
+			if not u.route.is_empty():
+				var p: Vector2 = u.route[u.ri % u.route.size()]
+				if fly_to(u, p.x, p.y, dt, u.spd * .55):
+					u.ri += 1
+			else:
+				u.face += dt * .8
+				u.cur_spd = 0
+			return
+	var t := u.tgt
+	if t and (t.dead or not is_enemy_of(u, t)):
+		t = null
+		u.tgt = null
+	u.scan_t -= dt
+	if u.scan_t <= 0:
+		u.scan_t = .35
+		var nt := nearest_hostile(u, 9.5)
+		if nt:
+			t = nt
+			u.tgt = nt
+	if t:
+		var p := t.pos2()
+		u.lkp = p
+		orbit(u, p, 4.6, dt)
+		if u.dist_to(t) < 8.5 and M.los(u.x, u.y, p.x, p.y):
+			aim_at(u, p.x, p.y)
+			fire_weapon(u, u.w, u, p.x, p.y, .6 if u.supp > 0 else 1.0)
+		return
+	var g = u.lkp
+	if g == null:
+		var a := nearest_agent(u, 22)
+		if a:
+			g = a.pos2()
+	if g != null:
+		if fly_to(u, g.x, g.y, dt, u.spd):
+			u.lkp = null
+	else:
+		u.cur_spd = 0
+
+
+# ---------------------------------------------------------------- câmeras de segurança
+func upd_cams(dt: float) -> void:
+	for c in M.cams:
+		if c.dead or c.off:
+			continue
+		c.a = c.base + sin(M.t * c.spd + c.ph) * c.sweep
+		c.chk = c.get("chk", 0.0) - dt
+		if c.chk > 0:
+			continue
+		c.chk = .2
+		var seen: Unit = null
+		for a in M.agents:
+			if a.dead:
+				continue
+			if not c.get("strict", false) and not is_armed(a):
+				continue
+			var dx: float = a.x - c.x
+			var dy: float = a.y - c.y
+			if sqrt(dx * dx + dy * dy) > c.range:
+				continue
+			if absf(angle_difference(atan2(dy, dx), c.a)) > c.fov:
+				continue
+			if M.los(c.x, c.y, a.x, a.y):
+				seen = a
+				break
+		if seen:
+			c.see += .2
+			if c.see >= .8 and not c.get("fired", false):
+				c.fired = true
+				cam_alarm(c, seen)
+		else:
+			c.see = maxf(0, c.see - .1)
+
+
+func cam_alarm(c: Dictionary, a: Unit) -> void:
+	say_log("Uma câmera de segurança viu o esquadrão!", "red")
+	var best: Unit = null
+	var bd := 1e9
+	for u in M.units:
+		if not u.dead and u.fac == "corp" and not u.disguise:
+			var d := Vector2(u.x - c.x, u.y - c.y).length()
+			if d < bd:
+				bd = d
+				best = u
+	if best:
+		alert_corp(best, a.x, a.y)
+	for u in M.units:
+		if not u.dead and u.fac == "corp" and not u.alerted and Vector2(u.x - c.x, u.y - c.y).length() < 14:
+			u.alerted = true
+			u.lkp = a.pos2()
+
+
+func hurt_cam(c: Dictionary) -> void:
+	if c.dead:
+		return
+	c.dead = true
+	fx.emit("cam_dead", {c = c})
+
+
+# ---------------------------------------------------------------- feixes de alarme
+func upd_lasers(dt: float) -> void:
+	for l in M.lasers:
+		var per: float = l.get("per", 0.0)
+		l.on = not l.off and (per <= 0 or fmod(M.t + l.get("ph", 0.0), per) < per * l.get("duty", .5))
+		if l.trip_t > 0:
+			l.trip_t -= dt
+		if not l.on:
+			continue
+		if l.get("sweep") != null:
+			var s: Dictionary = l.sweep
+			var L: float = s.b - s.a
+			var ph := fmod(M.t * s.spd, 2 * L)
+			var p: float = s.a + (ph if ph < L else 2 * L - ph)
+			if s.ax == "y":
+				l.y1 = p
+				l.y2 = p
+			else:
+				l.x1 = p
+				l.x2 = p
+		var dx: float = l.x2 - l.x1
+		var dy: float = l.y2 - l.y1
+		var L2 := maxf(dx * dx + dy * dy, 1e-4)
+		if l.get("dmg", 0.0) > 0:
+			l.tick = l.get("tick", 0.0) - dt
+			if l.tick > 0:
+				continue
+			l.tick = .2
+			for u in M.units:
+				if u.dead or u.in_car != null or u.mech or u.boss:
+					continue
+				var t := clampf(((u.x - l.x1) * dx + (u.y - l.y1) * dy) / L2, 0, 1)
+				var px: float = l.x1 + dx * t - u.x
+				var py: float = l.y1 + dy * t - u.y
+				if px * px + py * py > .16:
+					continue
+				hurt(u, l.dmg * .2, null)
+				l.trip_t = .3
+			continue
+		for a in M.agents:
+			if a.dead:
+				continue
+			var t := clampf(((a.x - l.x1) * dx + (a.y - l.y1) * dy) / L2, 0, 1)
+			var px: float = l.x1 + dx * t - a.x
+			var py: float = l.y1 + dy * t - a.y
+			if px * px + py * py > .09:
+				continue
+			l.trip_t = 1.2
+			if not l.get("tripped", false):
+				l.tripped = true
+				say_log("Um feixe de alarme foi cortado!", "red")
+				fx.emit("alarm", {})
+			if not M.corp_alert:
+				var best: Unit = null
+				var bd := 1e9
+				for u in M.units:
+					if not u.dead and u.fac == "corp" and not u.disguise and not u.cand:
+						var d := u.dist_to(a)
+						if d < bd:
+							bd = d
+							best = u
+				if best:
+					alert_corp(best, a.x, a.y)
+			break
+
+
+# ---------------------------------------------------------------- saídas de vapor
+func upd_vents(dt: float) -> void:
+	var over := M.vent_over > M.t
+	for v in M.vents:
+		if v.get("off", false):
+			v.state = 0
+			continue
+		var ph: float = v.per if over else fmod(M.t + v.ph, v.per)
+		var b0: float = v.per - v.dur
+		var warn := not over and ph > b0 - 1.2 and ph < b0
+		var burst := over or ph >= b0
+		v.state = 2 if burst else (1 if warn else 0)
+		if warn or burst:
+			v.av_t = v.get("av_t", 0.0) - dt
+			if v.av_t <= 0:
+				v.av_t = .3
+				for u in M.units:
+					if u.dead or u.in_car != null or u.mech or u.fac == "player" or u.alerted or u.panic_t > 0 or u.flee_to != null:
+						continue
+					var d := Vector2(u.x - v.x, u.y - v.y)
+					if d.length() > v.r + .7:
+						continue
+					var n := d.normalized()
+					var p = M.random_near(v.x + n.x * 2.6, v.y + n.y * 2.6, 1.2)
+					if p != null:
+						M.path_to(u, p.x, p.y)
+						u.idle_t = 2
+		if not burst:
+			continue
+		v.tick = v.get("tick", 0.0) - dt
+		if v.tick <= 0:
+			v.tick = .25
+			for u in M.units:
+				if not u.dead and u.in_car == null and not u.mech and Vector2(u.x - v.x, u.y - v.y).length() < v.r:
+					hurt(u, v.dmg * .25, M.vent_src if over else null)
+					if u.kind == "civil" and not u.follower:
+						u.panic_t = 3
+
+
+# ---------------------------------------------------------------- vidro, monotrilho, guindaste
+func shatter_glass(tx: int, ty: int) -> void:
+	var i := ty * N + tx
+	if M.tile[i] != T.GLASS:
+		return
+	M.tile[i] = T.PLAZA
+	M.walk[i] = 1
+	M.astar.set_point_solid(Vector2i(tx, ty), false)
+	M.glass_n -= 1
+	M.events.append({k = "glass", x = tx, y = ty})
+	fx.emit("glass", {x = tx + .5, y = ty + .5})
+	for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+		var x: int = tx + d.x
+		var y: int = ty + d.y
+		if x >= 0 and y >= 0 and x < N and y < N and M.tile[y * N + x] == T.GLASS and randf() < .35:
+			M.glass_q.append({x = x, y = y, t = M.t + .08 + randf() * .15})
+	noise(tx + .5, ty + .5, 5, null)
+
+
+func upd_glass() -> void:
+	var q := M.glass_q
+	M.glass_q = []
+	for g in q:
+		if M.t >= g.t:
+			shatter_glass(g.x, g.y)
+		else:
+			M.glass_q.append(g)
+
+
+func upd_train(dt: float) -> void:
+	if M.train == null:
+		M.train_t -= dt
+		if M.train_t <= 0:
+			M.train = {x = -14.0, dir = 1}
+			M.train_t = 40
+	else:
+		M.train.x += 11 * dt
+		if M.train.x > N + 16:
+			M.train = null
+	M.flags.trainNoise = M.train != null and M.train.x > -6 and M.train.x < N + 6
+
+
+func drop_container() -> void:
+	if not M.flags.get("crane", false) or M.flags.get("dropped", false) or M.drop_point == null:
+		return
+	M.flags.dropped = true
+	M.falling.append({x = M.drop_point.x, y = M.drop_point.y, t = 0.0, T = .8, landed = false})
+	fx.emit("drop", {x = M.drop_point.x, y = M.drop_point.y})
+
+
+func upd_falling(dt: float) -> void:
+	for f in M.falling:
+		if f.landed:
+			continue
+		f.t += dt
+		if f.t < f.T:
+			continue
+		f.landed = true
+		var src: Unit = null
+		for a in M.agents:
+			if not a.dead:
+				src = a
+				break
+		fx.emit("explosion", {x = f.x, y = f.y, r = 1.6})
+		for c in M.cars:
+			if not c.dead and absf(c.x - f.x) < 1.8 and absf(c.y - f.y) < 1.1:
+				c.hp = 1
+				hurt_car(c, 999, src)
+		var vip_alive: bool = M.vip != null and not M.vip.dead
+		for u in M.units:
+			if not u.dead and u.in_car == null and absf(u.x - f.x) < 1.7 and absf(u.y - f.y) < 1:
+				hurt(u, 999, src)
+		if vip_alive and M.vip.dead:
+			M.flags.accident = true
+		for x in range(int(floor(f.x - 1.4)), int(floor(f.x + 1.4)) + 1):
+			var i := int(f.y) * N + x
+			M.tile[i] = T.BLD
+			M.walk[i] = 0
+			M.astar.set_point_solid(Vector2i(x, int(f.y)), true)
+		noise(f.x, f.y, 16, src)
+
+
+# ---------------------------------------------------------------- carros com rota
+func add_car(px: float, py: float, ang: float, col: Color, hp := 120.0, model := "sedan") -> Dictionary:
+	var c := {x = px, y = py, ang = ang, dx = cos(ang), dy = sin(ang), cur = 0.0, hp = hp, dead = false, col = col, occ = [],
+		path = [], pi = 0, scripted = true, model = model, smoke_t = 0.0}
+	M.cars.append(c)
+	fx.emit("car", {c = c})
+	return c
+
+
+func drive_car(c: Dictionary, dt: float) -> void:
+	if c.path.is_empty():
+		c.cur = maxf(0, c.cur - 10 * dt)
+	else:
+		var p: Vector2 = c.path[c.pi]
+		var dx: float = p.x - c.x
+		var dy: float = p.y - c.y
+		var dd := sqrt(dx * dx + dy * dy)
+		if dd < .55:
+			c.pi += 1
+			if c.pi >= c.path.size():
+				c.path = []
+		else:
+			var da := angle_difference(c.ang, atan2(dy, dx))
+			c.ang += clampf(da, -6 * dt, 6 * dt)
+			var last: bool = c.pi >= c.path.size() - 1
+			var target := 2.2 if absf(da) > .9 else (3.0 if last and dd < 2.5 else 7.5)
+			c.cur += clampf(target - c.cur, -14 * dt, 5 * dt)
+	var ndx := cos(c.ang)
+	var ndy := sin(c.ang)
+	c.x += ndx * c.cur * GD.SPEED * dt
+	c.y += ndy * c.cur * GD.SPEED * dt
+	c.dx = ndx
+	c.dy = ndy
+	if c.cur > .5:
+		for u in M.units:
+			if u.dead or u.in_car != null or u.mech:
+				continue
+			var rx: float = u.x - c.x
+			var ry: float = u.y - c.y
+			var f := rx * ndx + ry * ndy
+			var l := rx * ndy - ry * ndx
+			if absf(f) < 1 and absf(l) < .55:
+				var s := 1.0 if l >= 0 else -1.0
+				var px := u.x + ndy * s * .12
+				var py := u.y - ndx * s * .12
+				if M.can_stand(px, py):
+					u.x = px
+					u.y = py
+
+
+func upd_cars(dt: float) -> void:
+	for c in M.cars:
+		if c.dead:
+			continue
+		drive_car(c, dt)
+
+
+func hurt_car(c: Dictionary, dmg: float, src: Unit) -> void:
+	if c.dead:
+		return
+	c.hp -= dmg
+	if c.hp <= 0:
+		c.dead = true
+		c.cur = 0
+		c.path = []
+		var occ: Array = c.occ.duplicate()
+		c.occ = []
+		for u in occ:
+			u.in_car = null
+		explode(c.x, c.y, 2, 60, src)
+		for u in occ:
+			if not u.dead:
+				hurt(u, 30, src)
+				u.burn = maxf(u.burn, 2)
+		fx.emit("car_dead", {c = c})
+
+
+## Destrói um prédio inteiro (portões arrombados pelo roteiro).
+func destroy_bld(b: Dictionary) -> void:
+	if b.get("dead", false):
+		return
+	b.dead = true
+	for y in range(b.y, b.y + b.d):
+		for x in range(b.x, b.x + b.w):
+			var i: int = y * N + x
+			M.tile[i] = T.PLAZA
+			M.walk[i] = 1
+			M.astar.set_point_solid(Vector2i(x, y), false)
+	M.events.append({k = "bld", b = b})
+	noise(b.x + b.w / 2.0, b.y + b.d / 2.0, 12, null)

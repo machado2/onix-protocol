@@ -16,6 +16,11 @@ var box: Panel
 var tip: Label
 var banner: PanelContainer
 var lines: Array = []
+var sub: Label
+var objlist: VBoxContainer
+var timer_lbl: Label
+var bars: Array = []
+var tp_panel: PanelContainer
 var font: Font
 var card_nodes: Array = []
 var inv_sig := ""
@@ -62,8 +67,43 @@ func setup(g) -> void:
 	status = _label("", 14, CYAN)
 	tv.add_child(_label("PROTOCOLO ÔNIX · " + GD.TIPOS[game.M.tipo].to_upper(), 12, Color(.55, .85, 1, .8)))
 	tv.add_child(top)
+	objlist = VBoxContainer.new()
+	tv.add_child(objlist)
 	tv.add_child(status)
 	root.add_child(tp)
+	tp_panel = tp
+	timer_lbl = _label("", 26, Color("#ffb13d"))
+	timer_lbl.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	timer_lbl.offset_top = 14
+	timer_lbl.offset_left = -200
+	timer_lbl.offset_right = 200
+	timer_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	root.add_child(timer_lbl)
+	# faixas de cinema e legenda
+	for k in 2:
+		var bar := ColorRect.new()
+		bar.color = Color(0, 0, 0, .92)
+		bar.anchor_right = 1
+		if k == 0:
+			bar.offset_bottom = 90
+		else:
+			bar.anchor_top = 1
+			bar.anchor_bottom = 1
+			bar.offset_top = -90
+		bar.visible = false
+		bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		root.add_child(bar)
+		bars.append(bar)
+	sub = _label("", 22, Color("#f2f5fa"))
+	sub.anchor_left = .15
+	sub.anchor_right = .85
+	sub.anchor_top = 1
+	sub.anchor_bottom = 1
+	sub.offset_top = -250
+	sub.offset_bottom = -190
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	root.add_child(sub)
 	# registro
 	logbox = VBoxContainer.new()
 	logbox.anchor_left = 1
@@ -188,6 +228,10 @@ func show_end(win: bool, reason: String) -> void:
 	var st := _label("Abates: %d · civis: %d · policiais: %d · seguidores: %d" % [s.abates, s.civis, s.policiais, s.seguidores], 15, Color("#9fb0c4"))
 	st.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(st)
+	for b in game.M.bonus:
+		var bl := _label("+ %s  $%d" % [b.text, b.val], 15, COLS.amber)
+		bl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(bl)
 	var h := _label("R para jogar de novo", 15, CYAN)
 	h.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(h)
@@ -197,9 +241,33 @@ func show_end(win: bool, reason: String) -> void:
 	banner.custom_minimum_size = Vector2(640, 180)
 
 
+func subtitle(t: String) -> void:
+	sub.text = t
+
+
 func refresh() -> void:
 	var M: Mission = game.M
-	top.text = M.objective_text()
+	if not game.talking():
+		sub.text = ""
+	var cine: bool = M.cine
+	for b in bars:
+		b.visible = cine
+	cards.get_parent().visible = not cine
+	tp_panel.visible = not cine
+	logbox.visible = not cine
+	sub.offset_top = -170 if cine else -250
+	sub.offset_bottom = -110 if cine else -190
+	if M.timer != null:
+		var left := maxf(0, M.timer.end - M.t)
+		timer_lbl.text = "%s  %d:%02d" % [M.timer.label.to_upper(), int(left) / 60, int(left) % 60]
+		timer_lbl.visible = not cine
+	else:
+		timer_lbl.visible = false
+	if M.hand:
+		top.visible = false
+		_refresh_objs(M)
+	else:
+		top.text = M.objective_text()
 	var st := []
 	if M.corp_alert:
 		st.append("ALERTA DO CONSÓRCIO")
@@ -243,6 +311,24 @@ func refresh() -> void:
 		tip.visible = false
 
 
+var obj_sig := ""
+
+
+func _refresh_objs(M: Mission) -> void:
+	var sig := ""
+	for o in M.objs:
+		sig += "%s|%s|%s;" % [o.id, o.text, o.state]
+	if sig == obj_sig:
+		return
+	obj_sig = sig
+	for c in objlist.get_children():
+		c.queue_free()
+	for o in M.objs:
+		var mark := "✓ " if o.state == "done" else ("✗ " if o.state == "failed" else ("▸ " if o.primary else "· "))
+		var col := COLS.green if o.state == "done" else (COLS.red if o.state == "failed" else (Color("#eef3fa") if o.primary else Color("#9fb0c4")))
+		objlist.add_child(_label(mark + o.text, 16 if o.primary else 14, col))
+
+
 func _label_for(u: Unit) -> String:
 	match u.kind:
 		"agente": return "Agente " + u.nome
@@ -250,9 +336,10 @@ func _label_for(u: Unit) -> String:
 		"policia": return "Seguidor (policial)" if u.follower else ("Policial (hostil)" if game.M.police_aggro > 0 else ("Policial (advertindo)" if u.warned else "Policial"))
 		"guarda": return "Seguidor (segurança)" if u.follower else ("Segurança Hélice (alerta)" if u.alerted else "Segurança Hélice")
 		"inimigo": return "Seguidor (agente)" if u.follower else ("Agente do Consórcio (caçando)" if u.alerted else "Agente do Consórcio")
-		"vip": return "ALVO: " + u.nome
+		"vip": return ("Alvo ou sósia? (aproxime-se para escanear)" if u.cand and not u.scanned and u != game.M.vip else ("Sósia de " + u.nome if u.double else "ALVO: " + u.nome))
 		"cientista": return u.nome
-		"torre": return "Torreta automática"
+		"torre": return ("Pilar de escudo" if u.pylon else "Torreta automática") + (" (desligada)" if u.off else "")
+		"drone": return "Drone de segurança" + (" (caçando)" if u.alerted else "")
 	return ""
 
 

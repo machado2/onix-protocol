@@ -63,6 +63,7 @@ static func _lamps(B: CityBuilder, used: Dictionary) -> void:
 		sp.distance_fade_length = 30.0
 		sp.shadow_bias = .05
 		B.add_child(sp)
+		L.node = sp
 
 
 # ---------------------------------------------------------------- postes de energia e fios

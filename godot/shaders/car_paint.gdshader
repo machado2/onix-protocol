@@ -4,12 +4,13 @@ shader_type spatial;
 render_mode cull_back;
 
 uniform sampler2D grime : hint_default_black, filter_linear_mipmap, repeat_enable;
+instance uniform vec4 paint_col = vec4(0.0);   // carros avulsos (fora de MultiMesh)
 varying vec4 icol;
 varying vec3 lpos;
 varying vec3 wpos;
 
 void vertex() {
-	icol = COLOR;
+	icol = paint_col.a > 0.5 ? paint_col : COLOR;
 	lpos = VERTEX;
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }

@@ -184,6 +184,7 @@ func _explosion(p: Vector3, r: float) -> void:
 	qm.size = Vector2(1, 1)
 	var smm := smoke_mat.duplicate()
 	smm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	smm.albedo_texture = MissionProps.puff_tex()
 	smm.vertex_color_use_as_albedo = true
 	qm.material = smm
 	parts.draw_pass_1 = qm

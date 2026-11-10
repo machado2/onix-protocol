@@ -88,6 +88,33 @@ var cov_t := 0.0
 var covered := false
 var seed := 0
 var view = null        # Character3D
+# missões feitas à mão
+var tags := {}         # marcas livres usadas pelos roteiros (worker, morador, cell, clinic...)
+var off := false       # torreta/drone desligado
+var dance := false
+var disguise := false
+var reveal_p := 0.0
+var cand := false      # candidato a alvo (sósias)
+var double := false
+var scanned := false
+var scan_p := 0.0
+var pylon := false
+var shield := false
+var boss := false
+var hold := false
+var safe_room := false
+var safe := false
+var flee_msg := ""
+var flee_to = null
+var board_t := 0.0
+var vanished := false
+var rival := ""
+var escaping := false
+var esc_t := 0.0
+var in_car = null      # dicionário do carro
+var scripted := false
+var fly := false
+var view_kind := ""    # força o modelo 3D (ex.: "enemy" para rivais)
 
 
 func pos2() -> Vector2:
