@@ -114,6 +114,7 @@ func _launch(di: int, rev: bool) -> void:
 	else:
 		tipo = "eliminacao"
 		map = CityGen.generate(seed, d.riq, 1)
+	map.dyn_cars = true
 	city = CityBuilder.new()
 	city.name = "Cidade"
 	city.focus = Vector3(map.spawn.x * C.TILE, 0, map.spawn.y * C.TILE)
@@ -280,6 +281,7 @@ func _dev() -> void:
 	add_child(city)
 	if play:
 		city.focus = Vector3(map.spawn.x * C.TILE, 0, map.spawn.y * C.TILE)
+		map.dyn_cars = true
 	city.build(map)
 	if play:
 		var g := Game.new()

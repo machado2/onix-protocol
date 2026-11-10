@@ -47,6 +47,11 @@ Sem argumentos, o jogo abre a campanha. A cidade 3D gira ao fundo dos menus.
 - **Laboratório.** 23 pesquisas em 5 áreas. Cientistas produzem PD e recebem salário.
 - **Interceptações.** Mensagens dos Ponteiros e do Conselho, e a escolha final sobre o Coral.
 
+### Carros e dicas
+
+- **Carros.** O tráfego é simulado: segue a faixa (mão direita), para atrás de pedestres e de outros carros, buzina e dá a volta no mapa. Com agentes selecionados, clique num carro para entrar. Depois, clique no mapa para dirigir pelas ruas. A tecla V faz o esquadrão descer. Em velocidade, o carro atropela quem estiver na frente.
+- **Dicas.** São 16 dicas contextuais, cada uma mostrada uma vez, salvas em `user://config.cfg`. Podem ser desligadas no título ou no menu de pausa.
+
 ### Mostradores neurais e áudio
 
 - **Mostradores neurais.** Cada agente tem três canais: reflexo (velocidade e cadência), percepção (precisão e alcance) e controle (discrição, resistência e força da sonda). Ficam no painel ao lado dos cartões e podem ser arrastados ou ajustados com a roda do mouse. A tecla F alterna as predefinições CONTIDO, PADRÃO e SOBRECARGA.
@@ -55,6 +60,14 @@ Sem argumentos, o jogo abre a campanha. A cidade 3D gira ao fundo dos menus.
 - **Volumes.** Ajustáveis no título e no menu de pausa, salvos em `user://config.cfg`.
 
 O estado fica em `scripts/campaign/camp.gd`, autoload `Camp`, e é salvo em `user://campanha.sav`. As telas ficam em `scripts/ui/menu.gd`. Esc pausa a missão e permite abortá-la. No fim da missão, Enter volta ao relatório.
+
+### Executável para Windows
+
+```bash
+godot --headless --path godot --export-release "Windows Desktop" build/ProtocoloOnix.exe
+```
+
+Gera `godot/build/ProtocoloOnix.exe` e `ProtocoloOnix.pck` (fora do git). Os dois arquivos precisam ficar na mesma pasta. Antes de exportar, gere as texturas e os sons e abra o projeto uma vez no editor, ou rode `--import`.
 
 ### Rodar e capturar imagens
 

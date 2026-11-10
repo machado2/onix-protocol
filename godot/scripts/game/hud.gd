@@ -450,6 +450,15 @@ func show_pause(on: bool) -> void:
 		s.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		s.value_changed.connect(func(val): Snd.set_volume(k[0], val))
 		vr.add_child(s)
+	var tc := CheckBox.new()
+	tc.text = "Dicas na tela"
+	tc.button_pressed = game.tips_on
+	tc.toggled.connect(func(on):
+		Game.set_tips(on)
+		game.tips_on = on
+		if on:
+			game.tips_seen = [])
+	vr.add_child(tc)
 	v.add_child(vr)
 	row.add_child(_button("Continuar", func(): game.toggle_pause_menu()))
 	if Camp.active:
@@ -460,6 +469,42 @@ func show_pause(on: bool) -> void:
 	pause_panel.reset_size()
 	pause_panel.position = get_viewport().get_visible_rect().size / 2 - Vector2(330, 110)
 	pause_panel.custom_minimum_size = Vector2(660, 0)
+
+
+var tip_panel: PanelContainer
+var tip_lbl: Label
+var tip_life := 0.0
+
+## Dica contextual no alto da tela; some sozinha em 9 s ou no ×.
+func show_tip(t: String) -> void:
+	if tip_panel == null:
+		tip_panel = PanelContainer.new()
+		var st := _panel_style(.88)
+		st.border_color = Color(1, .65, .24, .7)
+		st.border_width_left = 3
+		tip_panel.add_theme_stylebox_override("panel", st)
+		tip_panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
+		var h := HBoxContainer.new()
+		h.add_theme_constant_override("separation", 12)
+		tip_panel.add_child(h)
+		var ic := _label("DICA", 12, Color("#ffa53d"))
+		h.add_child(ic)
+		tip_lbl = _label("", 16, Color("#eef3fa"))
+		tip_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		tip_lbl.custom_minimum_size = Vector2(560, 0)
+		h.add_child(tip_lbl)
+		var x := Button.new()
+		x.text = "×"
+		x.flat = true
+		x.focus_mode = Control.FOCUS_NONE
+		x.pressed.connect(func(): tip_panel.visible = false)
+		h.add_child(x)
+		get_child(0).add_child(tip_panel)
+	tip_lbl.text = t
+	tip_panel.visible = true
+	tip_panel.reset_size()
+	tip_panel.position = Vector2((get_viewport().get_visible_rect().size.x - tip_panel.size.x) / 2, 64)
+	tip_life = 9.0
 
 
 func subtitle(t: String) -> void:
@@ -524,6 +569,10 @@ func refresh() -> void:
 		stl.set_border_width_all(2 if a.sel else 1)
 	_refresh_inv()
 	_refresh_neuro()
+	if tip_panel and tip_panel.visible:
+		tip_life -= get_process_delta_time()
+		tip_panel.modulate.a = clampf(tip_life / .6, 0, 1)
+		tip_panel.visible = tip_life > 0 and not M.cine
 	for l in lines:
 		l[1] -= get_process_delta_time()
 		l[0].modulate.a = clampf(l[1] / 2.0, 0, 1)

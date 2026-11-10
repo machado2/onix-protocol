@@ -100,6 +100,64 @@ func setup(m: Dictionary, mission_type: String, difficulty: int, seed: int) -> v
 	spawn = m.spawn
 	for pr in m.props:
 		props.append({x = pr.x, y = pr.y, hp = 20.0, dead = false})
+	# tráfego: os carros das faixas viram veículos da simulação (mão direita, como na cidade 3D)
+	if m.get("dyn_cars", false):
+		for c in m.cars:
+			var col: Color = c.col
+			var h := C.hash01(c.x * C.TILE, c.y * C.TILE, 31.0)
+			var model := "sedan"
+			if col == Color("#e0a020"):
+				model = "taxi"
+			elif h < .3:
+				model = "hatch"
+			elif h < .45:
+				model = "van"
+			elif h < .52:
+				model = "police"
+				col = Color("#e8e8e8")
+			var dx: float = -c.dx
+			var dy: float = -c.dy
+			cars.append({x = c.x, y = c.y, ang = atan2(dy, dx), dx = dx, dy = dy, cur = 0.0, v = 2.6 + rng.next() * 1.4, hp = 120.0, dead = false,
+				col = col, occ = [], path = [], pi = 0, scripted = false, player = false, model = model, smoke_t = 0.0, held = 0.0, stop_t = 0.0, honked = false})
+
+
+var road_astar: AStarGrid2D
+
+## Caminho pelas ruas (só tiles de rua) para o carro dirigido pelo esquadrão.
+func road_path(sx: float, sy: float, tx: float, ty: float) -> Array:
+	if road_astar == null:
+		road_astar = AStarGrid2D.new()
+		road_astar.region = Rect2i(0, 0, N, N)
+		road_astar.cell_size = Vector2.ONE
+		road_astar.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_NEVER
+		road_astar.update()
+		for yy in N:
+			for xx in N:
+				road_astar.set_point_solid(Vector2i(xx, yy), tile[yy * N + xx] != T.ROAD)
+	var near := func(px: float, py: float) -> Vector2i:
+		var best := Vector2i(-1, -1)
+		var bd := 1e9
+		for r in range(0, 12):
+			for yy in range(int(py) - r, int(py) + r + 1):
+				for xx in range(int(px) - r, int(px) + r + 1):
+					if xx < 0 or yy < 0 or xx >= N or yy >= N or tile[yy * N + xx] != T.ROAD:
+						continue
+					var d := Vector2(xx + .5 - px, yy + .5 - py).length_squared()
+					if d < bd:
+						bd = d
+						best = Vector2i(xx, yy)
+			if best.x >= 0:
+				return best
+		return best
+	var a: Vector2i = near.call(sx, sy)
+	var b: Vector2i = near.call(tx, ty)
+	if a.x < 0 or b.x < 0:
+		return []
+	var ids := road_astar.get_id_path(a, b)
+	var out := []
+	for i in range(1, ids.size()):
+		out.append(Vector2(ids[i].x + .5, ids[i].y + .5))
+	return out
 
 
 # ---------------------------------------------------------------- grade
@@ -436,6 +494,6 @@ func spawn_squad(squad_inv: Array) -> void:
 func objective_text() -> String:
 	match tipo:
 		"assassinato": return "Elimine %s antes que ele chegue ao transporte." % vip.nome if vip else "Elimine o alvo."
-		"extracao": return "Encontre %s e leve-a de volta ao ponto de entrada." % sci.nome if sci else "Extraia o cientista."
+		"extracao": return ("Encontre %s e leve-%s de volta ao ponto de entrada." % [sci.nome, "a" if sci.fem() else "o"]) if sci else "Extraia o cientista."
 		"sabotagem": return "Invada os terminais do Consórcio (%d/%d)." % [terms.filter(func(q): return q.done).size(), terms.size()]
 		_: return ("Elimine os agitadores do Consórcio (%d restantes)." if revolta else "Elimine os agentes do Consórcio (%d restantes).") % units.filter(func(u): return u.kind == "inimigo" and not u.dead and not u.follower).size()

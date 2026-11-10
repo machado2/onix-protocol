@@ -475,7 +475,7 @@ func kill(v: Unit, src: Unit) -> void:
 	if v.kind == "vip":
 		say_log("Um sósia foi abatido." if v.double else "Alvo eliminado: %s." % v.nome, "amber" if v.double else "green")
 	if v.kind == "cientista":
-		say_log("%s foi morta no fogo cruzado." % v.nome, "red")
+		say_log("%s foi %s no fogo cruzado." % [v.nome, "morta" if v.fem() else "morto"], "red")
 	fx.emit("death", {u = v, src = src})
 
 
@@ -960,7 +960,7 @@ func upd_sci(u: Unit, dt: float) -> void:
 		var a := nearest_agent(u, 1.9)
 		if a:
 			u.follow = true
-			say_log("%s se juntou ao esquadrão. Leve-a ao ponto de evacuação." % u.nome, "green")
+			say_log("%s se juntou ao esquadrão. Leve-%s ao ponto de evacuação." % [u.nome, "a" if u.fem() else "o"], "green")
 		return
 	var a := nearest_agent(u, 999)
 	if a == null:
@@ -1083,6 +1083,19 @@ func upd_agent(u: Unit, dt: float) -> void:
 					u.ord = null
 				elif u.path.is_empty():
 					M.path_to(u, o.x, o.y)
+			"enter":
+				var c: Dictionary = o.c
+				if c.dead:
+					u.ord = null
+				else:
+					c.held = 1.0
+					if Vector2(c.x - u.x, c.y - u.y).length() < 1.15:
+						board_car(u, c)
+						return
+					o.rep -= dt
+					if o.rep <= 0 or u.path.is_empty():
+						o.rep = .6
+						M.path_to(u, c.x, c.y)
 			"hack":
 				var t: Unit = o.t
 				if t.dead or t.fac != "corp" or not w.get("hack", false):
@@ -1261,6 +1274,7 @@ func update(dt: float) -> void:
 				u.rel_st = null
 		if u.flash > 0: u.flash -= dt
 		if u.hit_t > 0: u.hit_t -= dt
+		if u.run_t > 0: u.run_t -= dt
 		if u.aim_t > 0: u.aim_t -= dt
 		if u.burn > 0:
 			u.burn -= dt
@@ -1352,7 +1366,7 @@ func check_end() -> void:
 			if M.sci and M.sci.dead:
 				end_mission(false, "%s morreu durante a operação." % M.sci.nome)
 			elif M.sci and M.sci.follow and Vector2(M.sci.x - M.evac.x, M.sci.y - M.evac.y).length() < 2.3:
-				end_mission(true, "%s foi extraída com sucesso." % M.sci.nome)
+				end_mission(true, "%s foi %s com sucesso." % [M.sci.nome, "extraída" if M.sci.fem() else "extraído"])
 		"sabotagem":
 			if M.terms.all(func(q): return q.done):
 				end_mission(true, "A rede de vigilância do distrito caiu.")
@@ -1388,6 +1402,12 @@ func issue_move(p: Vector2) -> void:
 	var n := M.sel.size()
 	for k in n:
 		var u: Unit = M.sel[k]
+		if u.in_car != null:
+			var c: Dictionary = u.in_car
+			if not c.get("scripted", false):
+				c.path = M.road_path(c.x, c.y, p.x, p.y)
+				c.pi = 0
+			continue
 		var tx: float = p.x + offs[k % 4].x - (.4 if n > 1 else 0.0)
 		var ty: float = p.y + offs[k % 4].y - (.4 if n > 2 else 0.0)
 		if not M.can_stand(tx, ty):
@@ -1400,6 +1420,8 @@ func issue_move(p: Vector2) -> void:
 
 func issue_attack(t: Unit) -> void:
 	for u in M.sel:
+		if u.in_car != null:
+			continue
 		var it = u.inv[u.eq] if u.eq >= 0 else null
 		var w: Dictionary = GD.WD[it.t] if it != null else {}
 		if w.get("throw", false):
@@ -1935,10 +1957,35 @@ func drive_car(c: Dictionary, dt: float) -> void:
 			c.cur += clampf(target - c.cur, -14 * dt, 5 * dt)
 	var ndx := cos(c.ang)
 	var ndy := sin(c.ang)
-	c.x += ndx * c.cur * GD.SPEED * dt
-	c.y += ndy * c.cur * GD.SPEED * dt
+	var nx: float = c.x + ndx * c.cur * GD.SPEED * dt
+	var ny: float = c.y + ndy * c.cur * GD.SPEED * dt
+	if not c.get("player", false) or _road_at(nx + ndx * .7, ny + ndy * .7) or _road_at(nx, ny):
+		c.x = clampf(nx, .4, N - .4) if c.get("player", false) else nx
+		c.y = clampf(ny, .4, N - .4) if c.get("player", false) else ny
+	elif not c.path.is_empty():
+		var p: Vector2 = c.path[c.pi]
+		c.ang = atan2(p.y - c.y, p.x - c.x)
+		c.cur = 1.0
+	else:
+		c.cur = 0.0
 	c.dx = ndx
 	c.dy = ndy
+	if c.get("player", false) and c.cur > 2.5:
+		var drv: Unit = null
+		for o in c.occ:
+			if o.kind == "agente":
+				drv = o
+				break
+		for u in M.units:
+			if u.dead or u.in_car != null or u.mech or u.run_t > 0 or (u.fac == "player" and u.kind == "agente"):
+				continue
+			if Vector2(u.x - c.x, u.y - c.y).length() < .6:
+				u.run_t = 1.0
+				hurt(u, 55, drv)
+				var s := _spot_near(u.x + ndy * .6, u.y - ndx * .6, 0)
+				u.x = s.x
+				u.y = s.y
+		return
 	if c.cur > .5:
 		for u in M.units:
 			if u.dead or u.in_car != null or u.mech:
@@ -1956,11 +2003,146 @@ func drive_car(c: Dictionary, dt: float) -> void:
 					u.y = py
 
 
+func _road_at(px: float, py: float) -> bool:
+	if px < 0 or py < 0 or px >= N or py >= N:
+		return false
+	var t: int = M.tile[int(py) * N + int(px)]
+	return t == T.ROAD or t == T.PLAZA or t == T.WALK
+
+
+func _spot_near(px: float, py: float, k: int) -> Vector2:
+	var r := .8
+	while r < 3.5:
+		var a := k * 1.3
+		while a < k * 1.3 + TAU:
+			var qx := px + cos(a) * r
+			var qy := py + sin(a) * r
+			if M.can_stand(qx, qy):
+				return Vector2(qx, qy)
+			a += .5
+		r += .4
+	return Vector2(px, py)
+
+
+func board_car(u: Unit, c: Dictionary) -> void:
+	if u.in_car != null or c.dead:
+		return
+	u.in_car = c
+	c.occ.append(u)
+	c.player = true
+	c.path = []
+	c.cur = 0.0
+	u.path = []
+	u.ord = null
+	fx.emit("door", {x = c.x, y = c.y})
+	if c.occ.filter(func(o): return o.kind == "agente").size() == 1:
+		say_log("Agente no veículo. Clique no mapa para dirigir · V para sair.", "cyan")
+		fx.emit("car_in", {u = u})
+
+
+func exit_car(c: Dictionary) -> void:
+	var occ: Array = c.occ.duplicate()
+	c.occ = []
+	for k in occ.size():
+		var u: Unit = occ[k]
+		var s := _spot_near(c.x, c.y, k)
+		u.x = s.x
+		u.y = s.y
+		u.in_car = null
+		u.path = []
+	c.path = []
+	c.cur = 0.0
+	if not occ.is_empty():
+		fx.emit("door", {x = c.x, y = c.y})
+
+
+func issue_enter(c: Dictionary) -> void:
+	if c.dead:
+		return
+	for u in M.sel:
+		if not u.dead and u.in_car == null:
+			u.ord = {k = "enter", c = c, rep = 0.0}
+	c.held = 2.0
+	fx.emit("mark", {x = c.x, y = c.y, col = Color("#4fd8ff")})
+
+
+func exit_selected() -> void:
+	var done := []
+	for u in M.sel:
+		if u.in_car != null and not u.in_car in done:
+			done.append(u.in_car)
+			exit_car(u.in_car)
+
+
+## Tráfego: segue a faixa, para atrás de pedestres e carros, buzina e dá a volta no mapa.
+func traffic(c: Dictionary, dt: float) -> void:
+	if c.held > 0:
+		c.held -= dt
+		c.cur = maxf(0, c.cur - 14 * dt)
+		return
+	var blocked := false
+	for u in M.units:
+		if u.dead or u.in_car != null or u.mech or u.fly:
+			continue
+		var rx: float = u.x - c.x
+		var ry: float = u.y - c.y
+		var f: float = rx * c.dx + ry * c.dy
+		if f > .3 and f < 1.8 and absf(rx * c.dy - ry * c.dx) < .6:
+			blocked = true
+			break
+	if not blocked:
+		for o in M.cars:
+			if o == c:
+				continue
+			var rx: float = o.x - c.x
+			var ry: float = o.y - c.y
+			var f: float = rx * c.dx + ry * c.dy
+			if f > .3 and f < 2.1 and absf(rx * c.dy - ry * c.dx) < .75:
+				blocked = true
+				break
+	if blocked and c.stop_t < 3.5:
+		c.stop_t += dt
+		c.cur = maxf(0, c.cur - 14 * dt)
+		if c.stop_t > 1.6 and not c.honked:
+			c.honked = true
+			fx.emit("honk", {x = c.x, y = c.y})
+	else:
+		if not blocked:
+			c.stop_t = 0.0
+			c.honked = false
+		c.cur = minf(c.v, c.cur + 4 * dt)
+	c.ang = atan2(c.dy, c.dx)
+	c.x += c.dx * c.cur * GD.SPEED * dt
+	c.y += c.dy * c.cur * GD.SPEED * dt
+	if c.x < -2: c.x = N + 2
+	if c.x > N + 2: c.x = -2
+	if c.y < -2: c.y = N + 2
+	if c.y > N + 2: c.y = -2
+	if c.cur > .5:
+		for u in M.units:
+			if u.dead or u.in_car != null or u.mech:
+				continue
+			var rx: float = u.x - c.x
+			var ry: float = u.y - c.y
+			var f: float = rx * c.dx + ry * c.dy
+			var l: float = rx * c.dy - ry * c.dx
+			if absf(f) < .8 and absf(l) < .5:
+				var s := 1.0 if l >= 0 else -1.0
+				var px: float = u.x + c.dy * s * .08
+				var py: float = u.y - c.dx * s * .08
+				if M.can_stand(px, py):
+					u.x = px
+					u.y = py
+
+
 func upd_cars(dt: float) -> void:
 	for c in M.cars:
 		if c.dead:
 			continue
-		drive_car(c, dt)
+		if c.get("scripted", true) or c.get("player", false):
+			drive_car(c, dt)
+		else:
+			traffic(c, dt)
 
 
 func hurt_car(c: Dictionary, dmg: float, src: Unit) -> void:

@@ -77,6 +77,12 @@ func start(map: Dictionary, builder: CityBuilder, tipo: String, dif: int, seed: 
 	mprops.setup(self)
 	for u in M.units:
 		_make_view(u)
+	for c in M.cars:
+		if not c.get("scripted", true):
+			mprops.car_view(c)
+	if "--carlog" in OS.get_cmdline_user_args():
+		for c in M.cars.slice(0, 3):
+			print("CAR %.1f %.1f ang %.2f model %s" % [c.x, c.y, c.ang, c.model])
 	cam = Camera3D.new()
 	cam.fov = 30
 	cam.near = .5
@@ -89,6 +95,7 @@ func start(map: Dictionary, builder: CityBuilder, tipo: String, dif: int, seed: 
 	hud.setup(self)
 	sim.set_sel(M.agents.duplicate())
 	_setup_vo()
+	_tips_load()
 	listener = AudioListener3D.new()
 	add_child(listener)
 	listener.make_current()
@@ -296,6 +303,7 @@ func _process(dt: float) -> void:
 	_update_views(dt)
 	_update_camera(dt)
 	_audio(dt)
+	_tips(dt)
 	fxl.tick(dt)
 	mprops.tick(dt)
 	_events()
@@ -439,6 +447,20 @@ func screen_to_tile(sp: Vector2) -> Vector2:
 	return Vector2(p.x / W, p.z / W)
 
 
+## Carro livre (não roteirizado, inteiro) sob o ponto p em tiles.
+func pick_car(p: Vector2):
+	var best = null
+	var bd := 1.0
+	for c in M.cars:
+		if c.dead or c.get("scripted", false):
+			continue
+		var d := Vector2(c.x, c.y).distance_to(p)
+		if d < bd:
+			bd = d
+			best = c
+	return best
+
+
 func pick_unit(sp: Vector2) -> Unit:
 	var best: Unit = null
 	var bd := 34.0
@@ -496,6 +518,7 @@ func _unhandled_input(e: InputEvent) -> void:
 			dragging = true
 			hud.set_box(Rect2(drag_from, mm.position - drag_from).abs())
 		hover = pick_unit(mm.position)
+		hover_car = pick_car(screen_to_tile(mm.position)) if not M.sel.is_empty() else null
 	elif e is InputEventKey and e.pressed and not e.echo:
 		var k := (e as InputEventKey).keycode
 		if M.ended and Camp.active and (k == KEY_ENTER or k == KEY_KP_ENTER or k == KEY_ESCAPE):
@@ -525,6 +548,7 @@ func _unhandled_input(e: InputEvent) -> void:
 			KEY_Q: sim.cycle_weapon(-1)
 			KEY_E: sim.cycle_weapon(1)
 			KEY_H: sim.holster()
+			KEY_V: sim.exit_selected()
 			KEY_F:
 				if not M.sel.is_empty():
 					sim.set_preset((maxi(-1, sim.preset_of(M.sel[0])) + 1) % 3)
@@ -556,6 +580,11 @@ func _left_click(sp: Vector2, shift: bool) -> void:
 		return
 	var p := screen_to_tile(sp)
 	if p.x < 0 or p.y < 0 or p.x >= C.N or p.y >= C.N:
+		return
+	var car = pick_car(p)
+	if car != null and M.sel.any(func(a): return a.in_car == null):
+		sim.issue_enter(car)
+		Snd.play("ui")
 		return
 	sim.issue_move(p)
 	bark("ag:mov", M.sel[0])
@@ -731,6 +760,12 @@ func _sound(kind: String, d: Dictionary) -> void:
 			bark("ag:hurt", d.u)
 		"pickup":
 			Snd.play("pickup")
+		"door":
+			Snd.play("door", _world(d.x, d.y, 1))
+		"honk":
+			Snd.play("honk", _world(d.x, d.y, 1))
+		"car_in":
+			bark("ag:car", d.u)
 		"alarm":
 			Snd.play("alarm")
 		"siren":
@@ -800,6 +835,118 @@ func _audio(dt: float) -> void:
 		had_train = M.train != null
 		if had_train and M.rail != null:
 			Snd.play("train", cam_target, -2.0)
+
+
+# ---------------------------------------------------------------- dicas contextuais (uma vez cada, podem ser desligadas)
+const TIPS := {
+	start = "Clique num agente (ou arraste para pegar o grupo) e clique no chão para mover. Botão direito ataca.",
+	probe = "Um agente leva a SONDA: equipe-a e fique perto das pessoas para recrutá-las como seguidores.",
+	police = "A polícia está advertindo: aperte H para guardar as armas e ela se acalma.",
+	alert = "Combate! Espaço pausa o jogo para você dar ordens com calma.",
+	hurt = "Agente ferido: use o KIT MÉDICO no inventário (teclas F1–F6) para curá-lo.",
+	cover = "O escudo indica cobertura: encostado em paredes, contêineres ou carros, o agente evita metade dos tiros.",
+	car = "Com agentes selecionados, clique num carro para entrar. Depois clique no mapa para dirigir e V para sair.",
+	rotate = "Z e X giram a câmera quando um prédio atrapalha a visão.",
+	drone = "Drones de segurança voam por cima dos muros. Equipe a CHAVE FANTASMA e clique com o botão direito num drone para invadi-lo.",
+	vent = "A grade fica laranja e chia antes do vapor sair. Afaste o esquadrão e atraia os guardas para ela.",
+	laser = "Cruzar um feixe vermelho dispara o alarme. Alguns piscam: espere apagar para passar.",
+	glass = "Vidro não segura balas: os tiros atravessam e estilhaçam as paredes.",
+	heavy = "Soldados pesados aguentam muita bala comum. Granadas e munição perfurante funcionam melhor.",
+	shield = "O escudo azul vem dos pilares ligados por feixes. Derrube os pilares ou invada-os com a CHAVE FANTASMA.",
+	scan = "Sósias: fique perto de um suspeito, com as armas guardadas, até o anel do scanner fechar.",
+	neuro = "Os mostradores neurais ao lado dos cartões trocam velocidade, precisão e discrição. F alterna as predefinições; SOBRECARGA cansa e pode levar ao colapso.",
+}
+const TIP_CFG := "user://config.cfg"
+var hover_car = null
+var tip_q: Array = []
+var tip_t := 0.0
+var tip_chk := 0.0
+var tips_on := true
+var tips_seen: Array = []
+
+
+func _tips_load() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(TIP_CFG) == OK:
+		tips_on = cfg.get_value("tips", "on", true)
+		tips_seen = cfg.get_value("tips", "seen", [])
+	if "--notips" in OS.get_cmdline_user_args():
+		tips_on = false
+
+
+static func set_tips(on: bool) -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(TIP_CFG)
+	cfg.set_value("tips", "on", on)
+	if on:
+		cfg.set_value("tips", "seen", [])
+	cfg.save(TIP_CFG)
+
+
+static func tips_enabled() -> bool:
+	var cfg := ConfigFile.new()
+	if cfg.load(TIP_CFG) == OK:
+		return cfg.get_value("tips", "on", true)
+	return true
+
+
+func tip(id: String) -> void:
+	if tips_on and not id in tips_seen and not id in tip_q:
+		tip_q.append(id)
+
+
+func _tips(dt: float) -> void:
+	if not tips_on or M.ended or auto or look != null:
+		return
+	tip_chk -= dt
+	if tip_chk <= 0 and not M.cine:
+		tip_chk = .5
+		_tip_checks()
+	tip_t -= dt
+	if tip_t > 0 or tip_q.is_empty() or M.cine:
+		return
+	var id: String = tip_q.pop_front()
+	tips_seen.append(id)
+	var cfg := ConfigFile.new()
+	cfg.load(TIP_CFG)
+	cfg.set_value("tips", "seen", tips_seen)
+	cfg.save(TIP_CFG)
+	hud.show_tip(TIPS[id])
+	tip_t = 11.0
+
+
+func _near_agent(x: float, y: float, r: float) -> bool:
+	for a in M.agents:
+		if not a.dead and a.in_car == null and Vector2(a.x - x, a.y - y).length() < r:
+			return true
+	return false
+
+
+func _tip_checks() -> void:
+	if M.t > 1: tip("start")
+	if M.t > 20: tip("neuro")
+	for a in M.agents:
+		if a.dead:
+			continue
+		if M.t > 6 and a.inv.any(func(q): return q.t == "sonda"): tip("probe")
+		if a.hp < a.max_hp * .5 and a.inv.any(func(q): return q.t == "medkit"): tip("hurt")
+		if a.covered: tip("cover")
+	if M.corp_alert or M.police_aggro > 0: tip("alert")
+	if hover_car != null: tip("car")
+	if M.t > 45: tip("rotate")
+	if M.glass_n > 0 and M.t > 25: tip("glass")
+	for u in M.units:
+		if u.dead:
+			continue
+		if u.kind == "policia" and u.warned: tip("police")
+		elif u.kind == "drone" and u.fac == "corp" and _near_agent(u.x, u.y, 10): tip("drone")
+		elif u.heavy and u.alerted and _near_agent(u.x, u.y, 9): tip("heavy")
+		elif u.boss and u.shield and _near_agent(u.x, u.y, 12): tip("shield")
+		elif u.cand and not u.scanned and _near_agent(u.x, u.y, 7): tip("scan")
+	for v in M.vents:
+		if not v.get("off", false) and _near_agent(v.x, v.y, 4): tip("vent")
+	for l in M.lasers:
+		if l.get("on", false) and not l.has("dmg") and _near_agent((l.x1 + l.x2) / 2, (l.y1 + l.y2) / 2, 6): tip("laser")
 
 
 func talking() -> bool:

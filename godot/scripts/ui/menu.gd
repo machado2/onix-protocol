@@ -430,7 +430,13 @@ func show_title() -> void:
 		b.disabled = false
 		q.add_child(b)
 	v.add_child(q)
-	v.add_child(_volumes())
+	var vh := _volumes()
+	var tc := CheckBox.new()
+	tc.text = "Dicas"
+	tc.button_pressed = Game.tips_enabled()
+	tc.toggled.connect(func(on): Game.set_tips(on))
+	vh.add_child(tc)
+	v.add_child(vh)
 	var keys := _rich("[font_size=12][color=#7e8ba4]Botão esq. mover · selecionar · arrastar seleção\nBotão dir. atacar · disparar · arremessar · invadir\n1–4 agentes · Q/E armas · H guardar · F predefinição neural · Z/X girar câmera · Espaço pausa · Esc menu[/color][/font_size]", 12)
 	v.add_child(_sep())
 	v.add_child(keys)

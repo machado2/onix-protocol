@@ -197,6 +197,8 @@ static func _trees(B: CityBuilder, used: Dictionary) -> void:
 
 # ---------------------------------------------------------------- carros
 static func _cars(B: CityBuilder) -> void:
+	if B.M.get("dyn_cars", false):
+		return
 	for c in B.M.cars:
 		var dir := Vector3(-c.dx, 0, -c.dy)   # mão direita: inverte o sentido das faixas do jogo original
 		var p := Vector3(c.x * W, 0, c.y * W)

@@ -63,6 +63,12 @@ var max_estab := 100.0
 var colapso := 0.0
 var over := 0.0        # tempo em sobrecarga (gera dependência)
 var spark_t := 0.0
+## Concordância de gênero pelo título do nome ("Dra." / "Dr."); usada nas mensagens sobre cientistas.
+func fem() -> bool:
+	return nome.begins_with("Dra.") or nome.begins_with("Sra.") or nome.begins_with("Diretora") or nome.begins_with("Executiva")
+
+
+var run_t := 0.0       # atropelado há pouco (evita dano repetido)
 var ag = null           # agente da campanha (Dictionary)
 var warned := false
 var warn_t := 0.0

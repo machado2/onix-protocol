@@ -22,6 +22,7 @@ func _ready() -> void:
 	Camp.G.pesq.done["pentes"] = true
 	Camp.G.pesq.done["blindagem"] = true
 	var map := CityGen.generate(5, .5, 1)
+	map.dyn_cars = true
 	var M := Mission.new()
 	M.setup(map, "eliminacao", 6, 5)
 	var ag: Dictionary = Camp.G.agentes[0]
@@ -72,6 +73,30 @@ func _ready() -> void:
 	ok(a2.inv.size() == 1, "granada consumida")
 	steps(sim, 14)
 	ok(M.fires.is_empty(), "fogo apagou sozinho")
+	# carros: tráfego anda; agente entra, dirige pela rua e sai
+	var traf: Array = M.cars.filter(func(c): return not c.scripted)
+	ok(traf.size() >= 12, "tráfego virou veículos da simulação (%d)" % traf.size())
+	var c0: Dictionary = traf[0]
+	var p0 := Vector2(c0.x, c0.y)
+	steps(sim, 2)
+	ok(Vector2(c0.x, c0.y).distance_to(p0) > .5 or c0.stop_t > 0, "tráfego em movimento")
+	var a1b: Unit = M.agents[1]
+	var spot := sim._spot_near(c0.x, c0.y, 0)
+	a1b.x = spot.x
+	a1b.y = spot.y
+	sim.set_sel([a1b])
+	sim.issue_enter(c0)
+	steps(sim, 3)
+	ok(a1b.in_car == c0 and c0.player, "agente entrou no carro")
+	var goal := Vector2(C.N / 2.0, C.N / 2.0)
+	sim.issue_move(goal)
+	ok(not c0.path.is_empty(), "rota pelas ruas (%d trechos)" % c0.path.size())
+	var cp := Vector2(c0.x, c0.y)
+	steps(sim, 4)
+	ok(Vector2(c0.x, c0.y).distance_to(cp) > 2, "carro dirigido andou %.1f tiles" % Vector2(c0.x, c0.y).distance_to(cp))
+	ok(Vector2(a1b.x, a1b.y).distance_to(Vector2(c0.x, c0.y)) < .5, "agente acompanha o carro")
+	sim.exit_selected()
+	ok(a1b.in_car == null and M.can_stand(a1b.x, a1b.y) and c0.occ.is_empty(), "agente saiu do carro")
 	# mostradores neurais: sobrecarga leva ao colapso e gera dependência
 	var a3: Unit = M.agents[3]
 	sim.set_sel([a3])
