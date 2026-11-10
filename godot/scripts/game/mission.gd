@@ -37,6 +37,11 @@ var reason := ""
 var end_t := 0.0
 var last_combat := -99.0
 var stats := {abates = 0, civis = 0, policiais = 0, seguidores = 0}
+var fires: Array = []     # {x, y, life, tick, src}
+var rival_seen: Array = []
+var rival_dead: Array = []
+var rival_esc: Array = []
+var revolta := false
 var astar := AStarGrid2D.new()
 # missões feitas à mão
 var hand := false
@@ -293,7 +298,8 @@ func arm_ai(u: Unit, d: int) -> void:
 	u.mun = GD.WD[u.w].pente
 
 
-func mk_agent(k: int, px: float, py: float, inv: Array) -> Unit:
+## Agente do esquadrão. ag é a lista de itens (testes) ou o agente da campanha, com implantes.
+func mk_agent(k: int, px: float, py: float, ag) -> Unit:
 	var u := mk_unit("agente", px, py)
 	u.nome = GD.CODINOMES[k]
 	u.num = k + 1
@@ -302,8 +308,24 @@ func mk_agent(k: int, px: float, py: float, inv: Array) -> Unit:
 	u.armor = .08
 	u.acc = .75
 	u.inv = []
+	var inv: Array = []
+	if ag is Dictionary:
+		u.ag = ag
+		u.nome = ag.nome
+		var im: Dictionary = ag.imp
+		u.max_hp = 150 + 45 * im.chassi
+		u.hp = u.max_hp
+		u.armor = .08 + .07 * im.chassi + (.1 if Camp.has("blindagem") else 0.0)
+		u.spd *= 1 + .12 * im.motor
+		u.acc = .75 + .08 * im.otica
+		u.rng_mul = 1 + .08 * im.otica
+		for q in ag.inv:
+			inv.append(q.t)
+	else:
+		inv = ag
+	var pm := 1.5 if Camp.has("pentes") else 1.0
 	for it in inv:
-		u.inv.append({t = it, mun = GD.WD[it].get("pente", 0)})
+		u.inv.append({t = it, mun = roundi(GD.WD[it].get("pente", 0) * pm)})
 	u.eq = -1
 	for i in u.inv.size():
 		if GD.WD[u.inv[i].t].get("arma", false):
@@ -383,7 +405,7 @@ func populate(squad_inv: Array) -> void:
 			var cp: Dictionary = comps[0]
 			var tp: Vector2 = [Vector2(cp.ox + 1, cp.oy + 7), Vector2(cp.ox + 7, cp.oy + 7), Vector2(cp.ox + 1, cp.oy + 4), Vector2(cp.ox + 7, cp.oy + 4)][k]
 			mk_unit("torre", tp.x + .5, tp.y + .5)
-	var nE := (2 + int(ceil(dif / 2.0))) if tipo == "eliminacao" else maxi(0, int((dif - 1) / 2.0))
+	var nE := ((2 + int(ceil(dif / 3.0))) if revolta else (2 + int(ceil(dif / 2.0)))) if tipo == "eliminacao" else maxi(0, int((dif - 1) / 2.0))
 	for k in nE:
 		var p = _rand_tile(far)
 		if p == null:
@@ -395,7 +417,7 @@ func populate(squad_inv: Array) -> void:
 		var p = _rand_tile(func(tt, _x, _y): return tt == T.WALK)
 		if p != null:
 			mk_unit("policia", p.x, p.y)
-	for k in 30 + roundi(riq * 16):
+	for k in 30 + roundi(riq * 16) + (22 if revolta else 0):
 		var p = _rand_tile(is_side)
 		if p != null:
 			mk_unit("civil", p.x, p.y)
@@ -413,4 +435,4 @@ func objective_text() -> String:
 		"assassinato": return "Elimine %s antes que ele chegue ao transporte." % vip.nome if vip else "Elimine o alvo."
 		"extracao": return "Encontre %s e leve-a de volta ao ponto de entrada." % sci.nome if sci else "Extraia o cientista."
 		"sabotagem": return "Invada os terminais do Consórcio (%d/%d)." % [terms.filter(func(q): return q.done).size(), terms.size()]
-		_: return "Elimine os agentes do Consórcio (%d restantes)." % units.filter(func(u): return u.kind == "inimigo" and not u.dead and not u.follower).size()
+		_: return ("Elimine os agitadores do Consórcio (%d restantes)." if revolta else "Elimine os agentes do Consórcio (%d restantes).") % units.filter(func(u): return u.kind == "inimigo" and not u.dead and not u.follower).size()

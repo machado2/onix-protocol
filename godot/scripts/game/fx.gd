@@ -87,6 +87,8 @@ func event(kind: String, d: Dictionary) -> void:
 			_flash(_pos(u.x, u.y, 1.5), Color(.3, .9, 1), 4, 6, .4)
 		"hack":
 			_ring(_pos(d.x, d.y, .2), 3.0, Color(.3, 1, .6), .8)
+		"fire":
+			_fire(_pos(d.x, d.y, game.ground_at(d.x, d.y)), d.life)
 
 
 func _tracer(a: Vector3, b: Vector3, beam: bool, player: bool) -> void:
@@ -195,6 +197,59 @@ func _explosion(p: Vector3, r: float) -> void:
 	_decal(p, scorch_tex, r * 1.4)
 
 
+## Foco de incêndio: chamas em partículas aditivas, fumaça e uma luz que tremula; some sozinho.
+var fires: Array = []   # [Node3D, vida, OmniLight3D, GPUParticles3D]
+var flame_mat: StandardMaterial3D
+
+func _fire(p: Vector3, life: float) -> void:
+	if flame_mat == null:
+		flame_mat = StandardMaterial3D.new()
+		flame_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		flame_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		flame_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		flame_mat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+		flame_mat.vertex_color_use_as_albedo = true
+		flame_mat.albedo_texture = MissionProps.puff_tex()
+	var n := Node3D.new()
+	n.position = p + Vector3(randf_range(-.4, .4), 0, randf_range(-.4, .4))
+	add_child(n)
+	var parts := GPUParticles3D.new()
+	parts.amount = 28
+	parts.lifetime = .7
+	var pm := ParticleProcessMaterial.new()
+	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+	pm.emission_sphere_radius = .9
+	pm.direction = Vector3(0, 1, 0)
+	pm.spread = 12
+	pm.initial_velocity_min = 1.2
+	pm.initial_velocity_max = 2.6
+	pm.gravity = Vector3(0, 1.5, 0)
+	pm.scale_min = .5
+	pm.scale_max = 1.1
+	var g := Gradient.new()
+	g.set_color(0, Color(1, .75, .3, .9))
+	g.set_color(1, Color(.8, .15, .02, 0))
+	g.add_point(.4, Color(1, .45, .08, .7))
+	var gt := GradientTexture1D.new()
+	gt.gradient = g
+	pm.color_ramp = gt
+	parts.process_material = pm
+	var qm := QuadMesh.new()
+	qm.size = Vector2(1.1, 1.4)
+	qm.material = flame_mat
+	parts.draw_pass_1 = qm
+	parts.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	n.add_child(parts)
+	var l := OmniLight3D.new()
+	l.light_color = Color(1, .5, .18)
+	l.light_energy = 3.0
+	l.omni_range = 7.0
+	l.position.y = 1.2
+	n.add_child(l)
+	_decal(p, scorch_tex, 2.2)
+	fires.append([n, life, l, parts])
+
+
 func _decal(p: Vector3, tex: Texture2D, size: float) -> void:
 	var d := Decal.new()
 	d.texture_albedo = tex
@@ -209,6 +264,16 @@ func _decal(p: Vector3, tex: Texture2D, size: float) -> void:
 
 
 func tick(dt: float) -> void:
+	for i in range(fires.size() - 1, -1, -1):
+		var f = fires[i]
+		f[1] -= dt
+		var l: OmniLight3D = f[2]
+		l.light_energy = (2.4 + randf() * 1.4) * clampf(f[1] / 2.0, 0, 1)
+		if f[1] < 1.0:
+			(f[3] as GPUParticles3D).emitting = false
+		if f[1] <= -1.0:
+			f[0].queue_free()
+			fires.remove_at(i)
 	for i in range(tracers.size() - 1, -1, -1):
 		tracers[i][1] -= dt
 		if tracers[i][1] <= 0:

@@ -134,6 +134,8 @@ func note(m: String, c := "") -> void:
 
 
 func rival(id: String, x: float, y: float, hp_mul := 1.0) -> Unit:
+	if Camp.rival_dead(id):
+		return null
 	var u := sim.spawn_rival(id, x, y)
 	if u:
 		u.alerted = true

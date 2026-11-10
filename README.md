@@ -35,14 +35,31 @@ Os personagens precisam de algumas instalações no Blender:
 - Os pacotes CC0 do MakeHuman, baixados com `tools/dl_mh.sh` e descompactados na pasta de dados do MPFB.
 - Os BVH do CMU em `assets_dl/cmu/`, vindos do espelho `meshula/cmu-mocap` no GitHub.
 
+### Campanha
+
+Sem argumentos, o jogo abre a campanha. A cidade 3D gira ao fundo dos menus.
+
+- **Mapa tático de Nova Aurora.** Os 10 distritos aparecem com briefing, recompensa e renda. Cada vitória abre os distritos vizinhos.
+- **Território.** Cada distrito tem imposto e lealdade. Lealdade em zero vira revolta, que se reprime numa missão procedural contra agitadores.
+- **Arsenal.** Esquadrão de até 4 agentes em campo e 8 na folha. Implantes Mk I–III, clínica, inventário de 6 espaços e a loja do mercado cinza.
+- **Laboratório.** 23 pesquisas em 5 áreas. Cientistas produzem PD e recebem salário.
+- **Interceptações.** Mensagens dos Ponteiros e do Conselho, e a escolha final sobre o Coral.
+
+O estado fica em `scripts/campaign/camp.gd`, autoload `Camp`, e é salvo em `user://campanha.sav`. As telas ficam em `scripts/ui/menu.gd`. Esc pausa a missão e permite abortá-la. No fim da missão, Enter volta ao relatório.
+
 ### Rodar e capturar imagens
 
 ```bash
+godot --path godot --gpu-index 0
+godot --path godot --gpu-index 0 -- --mission=docas --skipcine
 godot --path godot --gpu-index 0 -- --cam=84,96,70,45,42,30 --crowd --quality=high
 ```
 
 Opções depois de `--`:
 
+- `--mission=docas|favela|…|torre` ou `--mission=assassinato|extracao|sabotagem|eliminacao`: pula a campanha e abre uma missão de teste.
+- `--camptest=pasta [--launch=N] [--rich] [--revolt] --auto --speed=4`: percorre as telas da campanha e salva uma captura de cada uma. Com `--launch`, também joga a missão do distrito N no piloto automático e captura o relatório. Usa `user://teste.sav`.
+- `--headless -- --simtest`: testa a simulação sem gráficos (Chave Fantasma, manto, incendiária, implantes, pesquisas, resultado).
 - `--shot=arquivo.jpg --frames=120`: salva uma captura e imprime o tempo de GPU.
 - `--seed`: muda o distrito gerado.
 - `--chars`: mostra uma fileira de personagens.

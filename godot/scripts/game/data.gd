@@ -15,6 +15,9 @@ const WD := {
 	granada = {nome = "Granada PEM", ab = "GRANADA", throw = true, dano = 85.0, raio = 2.3, alcance = 7.0},
 	medkit = {nome = "Kit Médico", ab = "MEDKIT", heal = true},
 	sonda = {nome = "Sonda Neural", ab = "SONDA", sonda = true, alcance = 2.6},
+	incendiaria = {nome = "Granada incendiária", ab = "INCEND.", throw = true, incend = true, dano = 35.0, raio = 1.4, alcance = 7.0},
+	manto = {nome = "Manto óptico", ab = "MANTO", manto = true},
+	chave = {nome = "Chave Fantasma", ab = "CHAVE", hack = true, alcance = 3.0},
 }
 
 const KIND := {

@@ -44,15 +44,18 @@ var look = null      # --look=x,y,dist,yaw: câmera fixa para capturas
 var auto_t := 2.0
 
 
-func start(map: Dictionary, builder: CityBuilder, tipo: String, dif: int, seed: int, pre: Mission = null, def = null) -> void:
+signal finished
+
+func start(map: Dictionary, builder: CityBuilder, tipo: String, dif: int, seed: int, pre: Mission = null, def = null, team: Array = [], revolta := false) -> void:
 	city = builder
-	var squad := [["smg", "pistola", "granada", "medkit"], ["smg", "sonda", "granada"], ["escopeta", "pistola", "granada"], ["feixe", "pistola", "medkit"]]
+	var squad: Array = team if not team.is_empty() else [["smg", "pistola", "granada", "medkit"], ["smg", "sonda", "granada"], ["escopeta", "pistola", "granada"], ["feixe", "pistola", "medkit"]]
 	if pre:
 		M = pre
 		M.setup(map, tipo, dif, seed)
 		M.spawn_squad(squad)
 	else:
 		M = Mission.new()
+		M.revolta = revolta
 		M.setup(map, tipo, dif, seed)
 		M.populate(squad)
 	sim = Sim.new(M)
@@ -97,6 +100,28 @@ func start(map: Dictionary, builder: CityBuilder, tipo: String, dif: int, seed: 
 		elif a.begins_with("--look="):
 			look = a.substr(7).split(",")
 	hud.add_log("Clique para mover · botão direito ataca · arraste para selecionar · Z/X giram a câmera.", "")
+
+
+func toggle_pause_menu() -> void:
+	if M.ended:
+		return
+	if hud.pause_open:
+		hud.show_pause(false)
+		paused = false
+	else:
+		paused = true
+		hud.show_pause(true)
+
+
+func abort() -> void:
+	hud.show_pause(false)
+	paused = false
+	sim.end_mission(false, "Missão abortada. O esquadrão recuou.")
+
+
+func _exit_tree() -> void:
+	RenderingServer.global_shader_parameter_set("cut_pos", Vector3(0, -1000, 0))
+	RenderingServer.global_shader_parameter_set("cut_r", 0.0)
 
 
 func _world(x: float, y: float, h := 0.0) -> Vector3:
@@ -228,6 +253,7 @@ func _update_views(dt: float) -> void:
 		ch.play(a, .2, sp)
 		ch.anim.speed_scale = sp if not paused else 0.0
 		ch.set_selected(u.sel)
+		ch.set_cloak(u.cloak)
 
 
 func _at_terminal(u: Unit) -> bool:
@@ -465,6 +491,14 @@ func _unhandled_input(e: InputEvent) -> void:
 		hover = pick_unit(mm.position)
 	elif e is InputEventKey and e.pressed and not e.echo:
 		var k := (e as InputEventKey).keycode
+		if M.ended and Camp.active and (k == KEY_ENTER or k == KEY_KP_ENTER or k == KEY_ESCAPE):
+			finished.emit()
+			return
+		if k == KEY_ESCAPE:
+			toggle_pause_menu()
+			return
+		if hud.pause_open:
+			return
 		match k:
 			KEY_1, KEY_2, KEY_3, KEY_4:
 				var a: Unit = M.agents[k - KEY_1] if k - KEY_1 < M.agents.size() else null
@@ -489,7 +523,7 @@ func _unhandled_input(e: InputEvent) -> void:
 			KEY_C: center_on_selection()
 			KEY_SPACE: paused = not paused and not M.ended
 			KEY_R:
-				if M.ended or e.ctrl_pressed:
+				if not Camp.active and (M.ended or e.ctrl_pressed):
 					get_tree().reload_current_scene()
 			KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6:
 				sim.use_slot(k - KEY_F1)

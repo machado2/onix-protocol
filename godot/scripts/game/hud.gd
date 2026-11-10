@@ -24,6 +24,8 @@ var tp_panel: PanelContainer
 var font: Font
 var card_nodes: Array = []
 var inv_sig := ""
+var pause_open := false
+var pause_panel: PanelContainer
 
 
 func _panel_style(alpha := .72) -> StyleBoxFlat:
@@ -55,6 +57,11 @@ func setup(g) -> void:
 	var root := Control.new()
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var th := Theme.new()
+	var sf := SystemFont.new()
+	sf.font_names = PackedStringArray(["Bahnschrift", "Segoe UI", "Arial"])
+	th.default_font = sf
+	root.theme = th
 	add_child(root)
 	# topo: objetivo e estado
 	var tp := PanelContainer.new()
@@ -149,6 +156,10 @@ func setup(g) -> void:
 	banner.set_anchors_preset(Control.PRESET_CENTER)
 	banner.visible = false
 	root.add_child(banner)
+	pause_panel = PanelContainer.new()
+	pause_panel.add_theme_stylebox_override("panel", _panel_style(.9))
+	pause_panel.visible = false
+	root.add_child(pause_panel)
 
 
 func _card(a: Unit) -> Button:
@@ -232,13 +243,71 @@ func show_end(win: bool, reason: String) -> void:
 		var bl := _label("+ %s  $%d" % [b.text, b.val], 15, COLS.amber)
 		bl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		v.add_child(bl)
-	var h := _label("R para jogar de novo", 15, CYAN)
-	h.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	v.add_child(h)
+	if Camp.active:
+		var b := _button("Continuar  (Enter)", func(): game.finished.emit())
+		b.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		v.add_child(b)
+	else:
+		var h := _label("R para jogar de novo", 15, CYAN)
+		h.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(h)
 	banner.add_child(v)
 	banner.visible = true
 	banner.position = get_viewport().get_visible_rect().size / 2 - Vector2(320, 90)
 	banner.custom_minimum_size = Vector2(640, 180)
+
+
+func _button(t: String, cb: Callable) -> Button:
+	var b := Button.new()
+	b.text = t
+	b.add_theme_font_size_override("font_size", 16)
+	var mk := func(bg: Color, bd: Color) -> StyleBoxFlat:
+		var s := StyleBoxFlat.new()
+		s.bg_color = bg
+		s.border_color = bd
+		s.set_border_width_all(1)
+		s.corner_radius_top_left = 8
+		s.corner_radius_bottom_right = 8
+		s.corner_detail = 1
+		s.content_margin_left = 20
+		s.content_margin_right = 20
+		s.content_margin_top = 10
+		s.content_margin_bottom = 10
+		return s
+	b.add_theme_stylebox_override("normal", mk.call(Color("#0d121e"), Color("#26324a")))
+	b.add_theme_stylebox_override("hover", mk.call(Color(.11, .15, .24), Color("#ffa53d")))
+	b.add_theme_stylebox_override("pressed", mk.call(Color(.08, .1, .16), Color("#ffa53d")))
+	b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	b.pressed.connect(cb)
+	return b
+
+
+## Menu de pausa (Esc): continuar ou abortar a missão.
+func show_pause(on: bool) -> void:
+	pause_open = on
+	for c in pause_panel.get_children():
+		c.queue_free()
+	pause_panel.visible = on
+	if not on:
+		return
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 12)
+	pause_panel.add_child(v)
+	var t := _label("PAUSA TÁTICA", 30, Color("#ffa53d"))
+	v.add_child(t)
+	v.add_child(_label(game.M.objective_text() if not game.M.hand else "Missão em andamento.", 16))
+	v.add_child(_label("Esq: mover, selecionar, entrar em carro · Dir: atacar, disparar, arremessar, invadir\n1–4 agentes · Q/E armas · H guardar · Z/X girar câmera · Espaço pausa · F1–F6 itens", 13, Color("#7e8ba4")))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	row.add_child(_button("Continuar", func(): game.toggle_pause_menu()))
+	if Camp.active:
+		row.add_child(_button("Abortar missão", func(): game.abort()))
+	else:
+		row.add_child(_button("Sair do jogo", func(): game.get_tree().quit()))
+	v.add_child(row)
+	pause_panel.reset_size()
+	pause_panel.position = get_viewport().get_visible_rect().size / 2 - Vector2(330, 110)
+	pause_panel.custom_minimum_size = Vector2(660, 0)
 
 
 func subtitle(t: String) -> void:
@@ -294,7 +363,7 @@ func refresh() -> void:
 				wp.text = "arma guardada"
 			else:
 				var w: Dictionary = GD.WD[it.t]
-				wp.text = w.ab + ("  %d/%d" % [it.mun, w.pente] if w.get("arma", false) else "") + ("  recarregando" if a.rel > 0 else "")
+				wp.text = w.ab + ("  %d/%d" % [it.mun, game.sim.pente_of(a, it.t)] if w.get("arma", false) else "") + ("  recarregando" if a.rel > 0 else "")
 		var stl: StyleBoxFlat = c.get_theme_stylebox("normal")
 		stl.border_color = Color(.3, .95, 1, .95) if a.sel else Color(.3, .85, 1, .25)
 		stl.set_border_width_all(2 if a.sel else 1)

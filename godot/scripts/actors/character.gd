@@ -140,6 +140,17 @@ func set_weapon_visible(on: bool) -> void:
 			m.visible = on
 
 
+var cloaked := false
+
+## Manto óptico: o corpo fica quase transparente (o anel de seleção continua visível).
+func set_cloak(on: bool) -> void:
+	if on == cloaked:
+		return
+	cloaked = on
+	for m in model.find_children("*", "MeshInstance3D", true, false):
+		(m as MeshInstance3D).transparency = .82 if on else 0.0
+
+
 func set_selected(on: bool) -> void:
 	if on and ring == null:
 		ring = MeshInstance3D.new()

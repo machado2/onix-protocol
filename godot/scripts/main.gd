@@ -1,11 +1,242 @@
-## Cena principal: gera um distrito, monta a cidade e o ambiente noturno e começa uma missão (Game).
-## Argumentos (depois de --): --seed=N --riq=0.6 --mission=assassinato|extracao|sabotagem|eliminacao --dif=1..9
+## Cena principal. Sem argumentos abre a campanha: a cidade 3D gira ao fundo dos menus (CampaignMenu) e cada
+## distrito lança uma missão (Game); no fim, o resultado volta para a campanha (Camp).
+## Testes (depois de --): --mission=docas|...|assassinato|extracao|sabotagem|eliminacao --dif=1..9 --seed=N --riq=0.6
 ## Vitrine sem jogo: --cam=x,z,dist,yaw,pitch,fov (metros e graus) com --chars, --crowd ou --view.
+## Roteiro da campanha com capturas: --camptest=pasta [--launch=N] [--auto --speed=4].
 extends Node3D
 
+const CFG := "user://config.cfg"
+
 var cam: Camera3D
+var env: Environment
+var moon: DirectionalLight3D
+var vp_base_mode := Viewport.SCALING_3D_MODE_BILINEAR
+var quality := "medium"
+var menu: CampaignMenu
+var city: CityBuilder
+var game: Game
+var orbit := false
+var orbit_c := Vector3()
+var orbit_r := 110.0
+var orbit_a := .6
+var cur_di := -1
+var cur_rev := false
+var test_dir := ""
+
+
+func _arg(k: String, def := "") -> String:
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with(k + "="):
+			return a.substr(k.length() + 1)
+		if a == k:
+			return "1"
+	return def
+
 
 func _ready() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(CFG) == OK:
+		quality = cfg.get_value("video", "quality", quality)
+	quality = _arg("--quality", quality)
+	if _arg("--simtest") != "":
+		add_child(load("res://scripts/dev/simtest.gd").new())
+		return
+	_environment()
+	var args := OS.get_cmdline_user_args()
+	var dev := _arg("--mission") != "" or "--chars" in args or "--crowd" in args or "--view" in args
+	if dev:
+		_dev()
+	else:
+		_campaign()
+
+
+# ---------------------------------------------------------------- campanha
+func _campaign() -> void:
+	cam = Camera3D.new()
+	cam.fov = 34
+	cam.near = 1.0
+	cam.far = 900.0
+	add_child(cam)
+	cam.make_current()
+	menu = CampaignMenu.new()
+	menu.quality = quality
+	add_child(menu)
+	menu.launch.connect(_launch)
+	menu.quality_changed.connect(_set_quality)
+	var map := CityGen.generate(31337, .75, 1)
+	_backdrop(map, Vector2(C.N * .5, C.N * .5), 120.0)
+	menu.show_title()
+	test_dir = _arg("--camptest")
+	if test_dir != "":
+		_camptest()
+
+
+## Cidade de fundo dos menus com a câmera girando devagar em volta de p (em tiles).
+func _backdrop(map: Dictionary, p: Vector2, r: float) -> void:
+	if city == null:
+		city = CityBuilder.new()
+		city.name = "Cidade"
+		city.focus = Vector3(p.x * C.TILE, 0, p.y * C.TILE)
+		add_child(city)
+		city.build(map)
+	orbit_c = Vector3(p.x * C.TILE, 0, p.y * C.TILE)
+	orbit_r = r
+	orbit = true
+	cam.make_current()
+
+
+func _launch(di: int, rev: bool) -> void:
+	cur_di = di
+	cur_rev = rev
+	var d: Dictionary = Camp.DIST[di]
+	menu.show_loading(d.nome.to_upper(), "Repressão da revolta · montando o distrito" if rev else "Montando o distrito · %s" % CampaignMenu.TIPOS[d.tipo].to_lower())
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if city:
+		city.queue_free()
+		city = null
+	await get_tree().process_frame
+	orbit = false
+	var tipo: String = d.tipo
+	var dif: int = d.dif
+	var seed: int = di * 7919 + Camp.G.dia * 31337
+	var hand_def = null
+	var hand_m: Mission = null
+	var map: Dictionary
+	if not rev:
+		hand_def = Missions.script_for(d.mission)
+		hand_m = Mission.new()
+		hand_m.hand = true
+		hand_m.def_name = d.mission
+		var B := MB.new(hand_m)
+		hand_def.build(B)
+		map = B.to_map(hand_def.SPAWN)
+	else:
+		tipo = "eliminacao"
+		map = CityGen.generate(seed, d.riq, 1)
+	city = CityBuilder.new()
+	city.name = "Cidade"
+	city.focus = Vector3(map.spawn.x * C.TILE, 0, map.spawn.y * C.TILE)
+	add_child(city)
+	city.build(map)
+	game = Game.new()
+	game.name = "Partida"
+	add_child(game)
+	game.start(map, city, tipo, dif, seed, hand_m, hand_def, Camp.squad(), rev)
+	game.finished.connect(_mission_done)
+	menu.hide_all()
+
+
+func _mission_done() -> void:
+	if game == null:
+		return
+	var r := Camp.apply_result(game.M, cur_di, cur_rev)
+	var p: Vector3 = game.cam_target
+	game.queue_free()
+	game = null
+	_backdrop({}, Vector2(p.x / C.TILE, p.z / C.TILE), 70.0)
+	menu.show_result(r)
+	if test_dir != "":
+		_snap_later("08_resultado", 30)
+
+
+func _process(dt: float) -> void:
+	if orbit and cam:
+		orbit_a += dt * .035
+		var h := orbit_r * .55
+		cam.position = orbit_c + Vector3(sin(orbit_a) * orbit_r, h, cos(orbit_a) * orbit_r)
+		cam.look_at(orbit_c + Vector3(0, 6, 0), Vector3.UP)
+	if game and game.auto and game.M.ended and game.M.end_t > 2.5:
+		_mission_done()
+	for w in walkers:
+		w[0].position += w[1] * dt
+
+
+func _set_quality(q: String) -> void:
+	quality = q
+	var cfg := ConfigFile.new()
+	cfg.load(CFG)
+	cfg.set_value("video", "quality", q)
+	cfg.save(CFG)
+	_apply_quality()
+
+
+# ---------------------------------------------------------------- roteiro de teste
+func _snap(name: String) -> void:
+	await RenderingServer.frame_post_draw
+	var img := get_viewport().get_texture().get_image()
+	img.save_jpg(test_dir.path_join(name + ".jpg"), .88)
+	print("SNAP ", name)
+
+
+func _snap_later(name: String, frames: int) -> void:
+	for k in frames:
+		await get_tree().process_frame
+	await _snap(name)
+	if name == "08_resultado":
+		await _wait(10)
+		menu.close_modal()
+		menu.show_map()
+		await _wait(20)
+		await _snap("09_mapa_depois")
+		get_tree().quit()
+
+
+func _wait(frames: int) -> void:
+	for k in frames:
+		await get_tree().process_frame
+
+
+func _camptest() -> void:
+	DirAccess.make_dir_recursive_absolute(test_dir)
+	await _wait(40)
+	await _snap("01_titulo")
+	Camp.new_game()
+	menu.map_sel = 0
+	menu.show_map()
+	menu.show_msg("inicio", false)
+	await _wait(10)
+	await _snap("02_mensagem")
+	menu.show_map()
+	await _wait(10)
+	await _snap("03_mapa")
+	menu.open_briefing(0)
+	await _wait(10)
+	await _snap("04_briefing")
+	Camp.G.dinheiro += 30000
+	Camp.G.pesq.done["impl2"] = true
+	menu.show_arsenal()
+	await _wait(10)
+	await _snap("05_arsenal")
+	menu.show_lab()
+	await _wait(10)
+	await _snap("06_laboratorio")
+	Camp.unlock("docas")
+	Camp.unlock("navalha_visto")
+	menu.show_inbox()
+	await _wait(10)
+	await _snap("07_interceptacoes")
+	var li := _arg("--launch")
+	if li == "":
+		get_tree().quit()
+		return
+	menu.close_modal()
+	if _arg("--rich") != "":
+		for a in Camp.G.agentes:
+			a.inv = [{t = "smg"}, {t = "pistola"}, {t = "granada"}, {t = "medkit"}]
+			a.imp.chassi = 2
+			a.imp.otica = 1
+	if _arg("--revolt") != "":
+		Camp.G.dono[int(li)] = "player"
+		Camp.terr(int(li)).revolta = 2
+		Camp.terr(int(li)).lealdade = 0
+	await _launch(int(li), _arg("--revolt") != "")
+	await _wait(int(_arg("--snapat", "400")))
+	await _snap("075_missao")
+
+
+# ---------------------------------------------------------------- testes e vitrine (sem campanha)
+func _dev() -> void:
 	var seed := 4242
 	var riq := .6
 	var camv := [84.0, 96.0, 70.0, 45.0, 42.0, 30.0]
@@ -26,7 +257,6 @@ func _ready() -> void:
 			var p := a.substr(6).split(",")
 			for i in p.size():
 				camv[i] = float(p[i])
-	_environment()
 	var hand_def = Missions.script_for(tipo) if Missions.DIST.has(tipo) else null
 	var hand_m: Mission = null
 	var map: Dictionary
@@ -88,8 +318,10 @@ func _ready() -> void:
 	cam.look_at(target, Vector3.UP)
 
 
+
+
 func _environment() -> void:
-	var env := Environment.new()
+	env = Environment.new()
 	var sky := Sky.new()
 	var sm := ProceduralSkyMaterial.new()
 	sm.sky_top_color = Color("#0e1222")
@@ -140,24 +372,41 @@ func _environment() -> void:
 	env.adjustment_enabled = true
 	env.adjustment_contrast = 1.08
 	env.adjustment_saturation = 1.1
-	for a in OS.get_cmdline_user_args():
-		if a.begins_with("--off="):
-			for k in a.substr(6).split(","):
-				match k:
-					"fog": env.volumetric_fog_enabled = false
-					"ssr": env.ssr_enabled = false
-					"ssil": env.ssil_enabled = false
-					"ssao": env.ssao_enabled = false
-					"glow": env.glow_enabled = false
-					"shadows": get_tree().set_meta("noshadow", true)
-					"moon": get_tree().set_meta("nomoon", true)
-	# níveis de qualidade: low (placas de entrada), medium (GTX 1650 a 60 fps), high (tudo ligado)
-	var q := "high"
-	for a in OS.get_cmdline_user_args():
-		if a.begins_with("--quality="):
-			q = a.substr(10)
+	_apply_quality()
+	var we := WorldEnvironment.new()
+	we.environment = env
+	add_child(we)
+	moon = DirectionalLight3D.new()
+	moon.light_color = Color("#9fb4ff")
+	moon.light_energy = .45
+	moon.rotation_degrees = Vector3(-55, 30, 0)
+	moon.directional_shadow_max_distance = 220.0
+	moon.light_volumetric_fog_energy = .4
+	add_child(moon)
+	moon.shadow_enabled = not get_tree().has_meta("nomoon")
+
+
+## Níveis de qualidade: low (placas de entrada), medium (GTX 1650 a 60 fps), high (tudo ligado).
+## Vale na hora para o ambiente; sombras de postes e a resolução das sombras valem a partir do próximo distrito.
+func _apply_quality() -> void:
 	var vp := get_viewport()
-	match q:
+	var off := _arg("--off").split(",")
+	env.ssr_enabled = not "ssr" in off
+	env.ssr_max_steps = 96
+	env.ssil_enabled = not "ssil" in off
+	env.ssao_enabled = not "ssao" in off
+	env.volumetric_fog_enabled = not "fog" in off
+	env.volumetric_fog_density = .02
+	for m in ["nomoon", "noshadow", "shadow_r"]:
+		if get_tree().has_meta(m):
+			get_tree().remove_meta(m)
+	if "shadows" in off:
+		get_tree().set_meta("noshadow", true)
+	if "moon" in off:
+		get_tree().set_meta("nomoon", true)
+	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
+	vp.scaling_3d_scale = 1.0
+	match quality:
 		"low":
 			env.ssr_enabled = false
 			env.ssil_enabled = false
@@ -175,17 +424,8 @@ func _environment() -> void:
 			get_tree().set_meta("shadow_r", 24.0)
 			vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR2
 			vp.scaling_3d_scale = .77
-	var we := WorldEnvironment.new()
-	we.environment = env
-	add_child(we)
-	var moon := DirectionalLight3D.new()
-	moon.light_color = Color("#9fb4ff")
-	moon.light_energy = .45
-	moon.rotation_degrees = Vector3(-55, 30, 0)
-	moon.shadow_enabled = not get_tree().has_meta("nomoon")
-	moon.directional_shadow_max_distance = 220.0
-	moon.light_volumetric_fog_energy = .4
-	add_child(moon)
+	if moon:
+		moon.shadow_enabled = not get_tree().has_meta("nomoon")
 
 
 ## Povoa a área perto do foco: pedestres andando nas calçadas, esquadrão de agentes, guardas e polícia.
@@ -234,6 +474,3 @@ func _crowd(map: Dictionary, focus: Vector3) -> void:
 		ch.play("aim" if i == 0 else "idle", 0.0, 1.0, i * .7)
 
 
-func _process(dt: float) -> void:
-	for w in walkers:
-		w[0].position += w[1] * dt

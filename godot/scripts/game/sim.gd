@@ -60,7 +60,7 @@ func nearest_hostile(u: Unit, rng: float) -> Unit:
 		if v == u or v.dead or not is_enemy_of(u, v):
 			continue
 		var d := u.dist_to(v)
-		if d < bd and M.los(u.x, u.y, v.x, v.y):
+		if d < bd and not (v.cloak and d > 1.5) and M.los(u.x, u.y, v.x, v.y):
 			best = v
 			bd = d
 	return best
@@ -106,7 +106,7 @@ func trigger_police(msg: String) -> void:
 		say_log(msg, "red")
 		M.reinf_t = 14
 		fx.emit("siren", {})
-	M.police_aggro = 40
+	M.police_aggro = 26 if Camp.has("trafego") else 40
 
 
 func police_sees(px: float, py: float, r: float) -> bool:
@@ -147,7 +147,7 @@ func detect(u: Unit, dt: float, dr: float, hr: float) -> void:
 		return
 	u.perc_t = .3
 	for a in M.agents:
-		if a.dead:
+		if a.dead or a.cloak:
 			continue
 		var d := u.dist_to(a)
 		var r := (dr if is_armed(a) else hr) * .95
@@ -343,7 +343,7 @@ func hurt(v: Unit, dmg: float, src: Unit) -> void:
 		dmg *= .3
 	if v.kind == "agente":
 		dmg *= 1 - NEURO.res
-	v.hp -= dmg * (1 - v.armor)
+	v.hp -= dmg * (1 - v.armor * (.5 if src and src.fac == "player" and Camp.has("perfurante") else 1.0))
 	v.hit_t = .08
 	v.last_hit = M.t
 	if not v.mech and randf() < .6:
@@ -381,6 +381,7 @@ func kill(v: Unit, src: Unit) -> void:
 		fx.emit("death", {u = v})
 		return
 	if v.rival != "" and not v.vanished:
+		M.rival_dead.append(v.rival)
 		M.bonus.append({text = "Ponteiro eliminado: " + v.nome, val = 3000})
 		say_log("%s está morto." % v.nome, "green")
 	var drop_w := cur_w(v) if is_armed(v) else ""
@@ -465,6 +466,10 @@ func convert_unit(v: Unit, owner: Unit) -> void:
 	if v.kind == "civil":
 		v.max_hp = maxf(v.max_hp, 45)
 		v.hp = v.max_hp
+		if Camp.has("armados") and v.w == "":
+			v.w = "pistola"
+			v.mun = GD.WD.pistola.pente
+			fx.emit("armed", {u = v})
 	M.followers += 1
 	M.stats.seguidores += 1
 	fx.emit("convert", {u = v})
@@ -473,8 +478,8 @@ func convert_unit(v: Unit, owner: Unit) -> void:
 
 
 func hijack_tick(u: Unit, dt: float, w: Dictionary) -> void:
-	var pw := minf(4, 1 + .2 * M.followers) * (.7 + .6 * .5)
-	var rng: float = w.alcance
+	var pw := minf(4, 1 + .2 * M.followers) * (.7 + .6 * .5) * (1.3 if Camp.has("sonda2") else 1.0) * (1.6 if Camp.has("sonda3") else 1.0)
+	var rng: float = w.alcance + (1.0 if Camp.has("sonda2") else 0.0)
 	var any := false
 	for v in M.units:
 		if v.dead or v.fac == "player":
@@ -596,7 +601,7 @@ func smart_ai(u: Unit) -> bool:
 
 func ai_combat(u: Unit, dt: float, rng: float) -> bool:
 	var t := u.tgt
-	if t and (t.dead or not is_enemy_of(u, t)):
+	if t and (t.dead or not is_enemy_of(u, t) or (t.cloak and u.dist_to(t) > 1.5)):
 		t = null
 		u.tgt = null
 	u.scan_t -= dt
@@ -724,7 +729,7 @@ func upd_police(u: Unit, dt: float) -> void:
 		u.perc_t = .3
 		var seen: Unit = null
 		for a in M.agents:
-			if not a.dead and is_armed(a) and u.dist_to(a) < 7 and M.los(u.x, u.y, a.x, a.y):
+			if not a.dead and not a.cloak and is_armed(a) and u.dist_to(a) < 7 and M.los(u.x, u.y, a.x, a.y):
 				seen = a
 				break
 		u.seeing = seen
@@ -931,8 +936,9 @@ func equip_first_weapon(u: Unit) -> bool:
 
 
 func upd_agent(u: Unit, dt: float) -> void:
-	if u.hp < u.max_hp and M.t - u.last_hit > 5:
-		u.hp = minf(u.max_hp, u.hp + dt * 1.5)
+	var reg := 2.5 if Camp.has("reparo") else (0.0 if Camp.active else 1.5)
+	if reg > 0 and u.hp < u.max_hp and M.t - u.last_hit > 5:
+		u.hp = minf(u.max_hp, u.hp + dt * reg)
 	var acc_m: float = NEURO.acc * (.65 if u.supp > 0 else 1.0)
 	u.cov_t -= dt
 	if u.cov_t <= 0:
@@ -984,17 +990,18 @@ func upd_agent(u: Unit, dt: float) -> void:
 					fire_weapon(u, it.t, it, o.x, o.y, acc_m, NEURO.rof, NEURO.rng)
 			"throw":
 				var d := Vector2(o.x - u.x, o.y - u.y).length()
-				var ii := -1
-				for i in u.inv.size():
-					if u.inv[i].t == "granada":
-						ii = i
-						break
+				var ii := u.eq if u.eq >= 0 and GD.WD[u.inv[u.eq].t].get("throw", false) else -1
+				if ii < 0:
+					for i in u.inv.size():
+						if GD.WD[u.inv[i].t].get("throw", false):
+							ii = i
+							break
 				if ii < 0:
 					u.ord = null
-				elif d <= GD.WD.granada.alcance:
+				elif d <= GD.WD[u.inv[ii].t].alcance:
 					u.path = []
 					aim_at(u, o.x, o.y)
-					M.nades.append({sx = u.x, sy = u.y, tx = o.x, ty = o.y, t = 0.0, T = .5 + d * .07, src = u, wt = "granada"})
+					M.nades.append({sx = u.x, sy = u.y, tx = o.x, ty = o.y, t = 0.0, T = .5 + d * .07, src = u, wt = u.inv[ii].t})
 					fx.emit("nade", {})
 					remove_item(u, ii)
 					if not equip_first_weapon(u):
@@ -1002,6 +1009,40 @@ func upd_agent(u: Unit, dt: float) -> void:
 					u.ord = null
 				elif u.path.is_empty():
 					M.path_to(u, o.x, o.y)
+			"hack":
+				var t: Unit = o.t
+				if t.dead or t.fac != "corp" or not w.get("hack", false):
+					u.ord = null
+				elif u.dist_to(t) <= w.alcance and M.los(u.x, u.y, t.x, t.y):
+					u.path = []
+					aim_at(u, t.x, t.y)
+					o.p += dt
+					t.hj_t = .25
+					if o.p >= 2.2:
+						t.fac = "player"
+						t.follower = t.kind == "drone"
+						t.off = false
+						t.alerted = false
+						t.tgt = null
+						t.lkp = null
+						say_log("Drone invadido: agora ele protege o esquadrão." if t.kind == "drone" else "Torreta invadida: agora ela protege o esquadrão.", "cyan")
+						fx.emit("convert", {u = t})
+						u.ord = null
+				elif u.path.is_empty():
+					M.path_to(u, t.x, t.y)
+	if w.get("manto", false):
+		if it.get("bat", -1.0) < 0:
+			it.bat = 25.0
+		if it.bat > 0:
+			it.bat -= dt
+			u.cloak = true
+			if it.bat <= 0:
+				u.cloak = false
+				say_log("O manto de %s descarregou." % u.nome, "amber")
+		else:
+			u.cloak = false
+	else:
+		u.cloak = false
 	if w.get("arma", false) and not (o != null and (o.k == "fire" or (o.k == "atk" and o.get("engaged", false)))):
 		u.scan_t -= dt
 		if u.scan_t <= 0:
@@ -1024,7 +1065,7 @@ func upd_agent(u: Unit, dt: float) -> void:
 		var d = M.drops[i]
 		if Vector2(d.x - u.x, d.y - u.y).length() > .7 or u.inv.size() >= 6:
 			continue
-		u.inv.append({t = d.t, mun = GD.WD[d.t].pente})
+		u.inv.append({t = d.t, mun = pente_of(u, d.t)})
 		M.drops.remove_at(i)
 		say_log("%s pegou %s." % [u.nome, GD.WD[d.t].ab], "cyan")
 	for tm in M.terms:
@@ -1086,6 +1127,47 @@ func upd_nades(dt: float) -> void:
 			M.nades.remove_at(i)
 			var W: Dictionary = GD.WD[q.wt]
 			explode(q.tx, q.ty, W.raio, W.dano, q.src)
+			if W.get("incend", false):
+				for k in 9:
+					var a := k / 8.0 * TAU
+					var r := 0.0 if k == 8 else (1.5 if k % 2 else .8)
+					add_fire(q.tx + cos(a) * r, q.ty + sin(a) * r, 10 + randf() * 3, q.src)
+
+
+func add_fire(px: float, py: float, life: float, src: Unit = null) -> void:
+	if px < 0 or py < 0 or px >= N or py >= N or M.fires.size() > 40:
+		return
+	var tt := M.tile[int(py) * N + int(px)]
+	if tt == T.WATER or tt == T.BLD:
+		return
+	var f := {x = px, y = py, life = life, tick = 0.0, src = src}
+	M.fires.append(f)
+	fx.emit("fire", f)
+
+
+func upd_fires(dt: float) -> void:
+	for i in range(M.fires.size() - 1, -1, -1):
+		var f: Dictionary = M.fires[i]
+		f.life -= dt
+		if f.life <= 0:
+			M.fires.remove_at(i)
+			continue
+		f.tick -= dt
+		if f.tick > 0:
+			continue
+		f.tick = .3
+		for u in M.units:
+			if not u.dead and u.in_car == null and not u.mech and absf(u.x - f.x) < .6 and absf(u.y - f.y) < .6:
+				if u.burn <= 0:
+					u.burn_src = f.src
+				u.burn = maxf(u.burn, 1.5)
+		for p in M.props:
+			if not p.dead and absf(p.x - f.x) < .7 and absf(p.y - f.y) < .7 and randf() < .15:
+				hurt_prop(p, 999, null)
+
+
+func pente_of(u: Unit, wk: String) -> int:
+	return roundi(GD.WD[wk].get("pente", 0) * (1.5 if u and u.kind == "agente" and Camp.has("pentes") else 1.0))
 
 
 func update(dt: float) -> void:
@@ -1100,7 +1182,7 @@ func update(dt: float) -> void:
 		if u.rel > 0:
 			u.rel -= dt
 			if u.rel <= 0 and u.rel_st != null:
-				u.rel_st.mun = GD.WD[u.rel_w].pente
+				u.rel_st.mun = pente_of(u, u.rel_w)
 				u.rel_st = null
 		if u.flash > 0: u.flash -= dt
 		if u.hit_t > 0: u.hit_t -= dt
@@ -1142,6 +1224,7 @@ func update(dt: float) -> void:
 	separate()
 	upd_cars(dt)
 	upd_nades(dt)
+	if not M.fires.is_empty(): upd_fires(dt)
 	if not M.cams.is_empty(): upd_cams(dt)
 	if not M.lasers.is_empty(): upd_lasers(dt)
 	if not M.vents.is_empty(): upd_vents(dt)
@@ -1156,7 +1239,7 @@ func update(dt: float) -> void:
 		else:
 			M.reinf_t -= dt
 			if M.reinf_t <= 0:
-				M.reinf_t = 20
+				M.reinf_t = 35 if Camp.has("trafego") else 20
 				spawn_reinforcements()
 	if not M.ended:
 		check_end()
@@ -1200,7 +1283,7 @@ func check_end() -> void:
 				end_mission(true, "A rede de vigilância do distrito caiu.")
 		"eliminacao":
 			if M.units.all(func(u): return u.kind != "inimigo" or u.dead or u.follower):
-				end_mission(true, "A célula de agentes do Consórcio foi eliminada.")
+				end_mission(true, "Os agitadores do Consórcio foram eliminados." if M.revolta else "A célula de agentes do Consórcio foi eliminada.")
 
 
 func end_mission(w: bool, r: String) -> void:
@@ -1246,6 +1329,9 @@ func issue_attack(t: Unit) -> void:
 		var w: Dictionary = GD.WD[it.t] if it != null else {}
 		if w.get("throw", false):
 			u.ord = {k = "throw", x = t.x, y = t.y}
+		elif w.get("hack", false):
+			if t.fac == "corp" and (t.kind == "torre" or t.kind == "drone"):
+				u.ord = {k = "hack", t = t, p = 0.0}
 		else:
 			if not w.get("arma", false):
 				equip_first_weapon(u)
@@ -1272,7 +1358,7 @@ func cycle_weapon(dir: int) -> void:
 		var opts := [-1]
 		for i in u.inv.size():
 			var w: Dictionary = GD.WD[u.inv[i].t]
-			if w.get("arma", false) or w.get("throw", false) or w.get("sonda", false):
+			if w.get("arma", false) or w.get("throw", false) or w.get("sonda", false) or w.get("hack", false) or w.get("manto", false):
 				opts.append(i)
 		var p := opts.find(u.eq)
 		u.eq = opts[(p + dir + opts.size()) % opts.size()]
@@ -1293,6 +1379,15 @@ func use_slot(i: int) -> void:
 		return
 	var it = L.inv[i]
 	var w: Dictionary = GD.WD[it.t]
+	if w.get("heal", false) and Camp.has("nanomed"):
+		var n := 0
+		for a in M.agents:
+			if not a.dead and a.dist_to(L) < 2.5:
+				a.hp = a.max_hp
+				n += 1
+		remove_item(L, i)
+		say_log("Nanomedkit: %d agente(s) restaurado(s)." % n, "green")
+		return
 	if w.get("heal", false):
 		if L.hp >= L.max_hp:
 			say_log("%s já está com integridade máxima." % L.nome)
@@ -1371,6 +1466,13 @@ func spawn_rival(id: String, px: float, py: float) -> Unit:
 
 func rival_tick(u: Unit, dt: float) -> bool:
 	var R: Dictionary = GD.RIVALS.get(u.rival, {})
+	if not u.contact:
+		var a := nearest_agent(u, 9)
+		if a and M.los(u.x, u.y, a.x, a.y):
+			u.contact = true
+			if not u.rival in M.rival_seen:
+				M.rival_seen.append(u.rival)
+			say_log("%s, um dos Ponteiros do Consórcio, entrou no combate." % u.nome, "red")
 	if u.escaping:
 		u.esc_t -= dt
 		M.move_along(u, dt, u.spd * 1.4)
@@ -1378,6 +1480,7 @@ func rival_tick(u: Unit, dt: float) -> bool:
 			u.dead = true
 			u.vanished = true
 			u.hp = 0
+			M.rival_esc.append(u.rival)
 			say_log("%s escapou." % u.nome, "amber")
 			fx.emit("vanish", {u = u})
 		return true
@@ -1451,7 +1554,7 @@ func upd_drone(u: Unit, dt: float) -> void:
 				u.cur_spd = 0
 			return
 	var t := u.tgt
-	if t and (t.dead or not is_enemy_of(u, t)):
+	if t and (t.dead or not is_enemy_of(u, t) or (t.cloak and u.dist_to(t) > 1.5)):
 		t = null
 		u.tgt = null
 	u.scan_t -= dt
@@ -1493,7 +1596,7 @@ func upd_cams(dt: float) -> void:
 		c.chk = .2
 		var seen: Unit = null
 		for a in M.agents:
-			if a.dead:
+			if a.dead or a.cloak:
 				continue
 			if not c.get("strict", false) and not is_armed(a):
 				continue
