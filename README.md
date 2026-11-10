@@ -1,44 +1,75 @@
 # Protocolo Ônix
 
-Jogo original de tática em tempo real com visão isométrica, ambientado num Brasil cyberpunk. Feito em JavaScript com Three.js; roda direto no navegador.
+Jogo original de tática em tempo real com visão isométrica, ambientado num Brasil cyberpunk.
 
-**Jogar:** https://onix.fbmac.net
+Há duas versões no repositório:
 
-## Estrutura
+- **`godot/`: nova versão em Godot 4.7 (Forward+)**, com gráficos 3D de alta qualidade. Por enquanto é uma fatia visual: a cidade gerada, a iluminação noturna e os personagens com mocap. A lógica do jogo ainda vai ser portada.
+- **`v2/`: versão original em JavaScript/Three.js**, jogável no navegador em https://onix.fbmac.net.
+
+## Versão Godot
+
+### Como os assets são feitos
+
+| Parte | Ferramenta | Saída |
+|---|---|---|
+| Texturas PBR (asfalto, concreto, reboco, tijolo, granito, metal, madeira, folhas…) | `tools/texgen/texgen.py`: ruído periódico por FFT e Voronoi em numpy, sem fotos | `godot/assets/tex/*_a/_n/_orm.png` (geradas, fora do git) |
+| Peças de fachada (concreto, pele de vidro, favela, térreo comercial) | `tools/blender/kit_arch.py` | `godot/assets/kit/arch.glb` |
+| Objetos de rua e telhado (postes, fiação, semáforos, caixas-d'água, ar-condicionado…) | `tools/blender/props.py` | `godot/assets/kit/props.glb` |
+| Carros (sedã, hatch, van, táxi, viatura) | `tools/blender/cars.py` | `godot/assets/kit/cars.glb` |
+| Árvores e palmeiras | `tools/blender/trees.py` | `godot/assets/kit/trees.glb` |
+| Personagens: humanos do MPFB2 (MakeHuman), mocap do CMU redirecionado, equipamento ajustado ao corpo, IK das mãos na arma | `tools/blender/humans.py`, `mocap.py`, `build_chars.py` | `godot/assets/chars/<nome>.glb` |
+
+Para refazer tudo:
+
+```bash
+python tools/texgen/texgen.py
+B="/c/Program Files/Blender Foundation/Blender 5.2/blender.exe"
+for s in kit_arch props cars trees; do "$B" -b --factory-startup -P tools/blender/$s.py -- "$(pwd)/godot/assets/kit/${s/kit_arch/arch}.glb"; done
+sh tools/build_all_chars.sh
+```
+
+Os personagens precisam de algumas instalações no Blender:
+
+- A extensão MPFB2, de extensions.blender.org.
+- Os pacotes CC0 do MakeHuman, baixados com `tools/dl_mh.sh` e descompactados na pasta de dados do MPFB.
+- Os BVH do CMU em `assets_dl/cmu/`, vindos do espelho `meshula/cmu-mocap` no GitHub.
+
+### Rodar e capturar imagens
+
+```bash
+godot --path godot --gpu-index 0 -- --cam=84,96,70,45,42,30 --crowd --quality=high
+```
+
+Opções depois de `--`:
+
+- `--shot=arquivo.jpg --frames=120`: salva uma captura e imprime o tempo de GPU.
+- `--seed`: muda o distrito gerado.
+- `--chars`: mostra uma fileira de personagens.
+- `--quality=low|medium|high`: escolhe o nível de qualidade.
+- `--off=fog,ssr,ssil,ssao,glow,shadows,moon`: desliga efeitos.
+
+## Versão Three.js (`v2/`)
 
 | Pasta | Conteúdo |
 |---|---|
-| `v2/` | O jogo: `index.html` (gerado), `js/` (simulação, render, UI, missões, roteiro), `audio/` (vozes), `models/` (personagens, veículos e objetos em glTF), `tex/` (texturas PBR) |
-| `v2/js/missions/` | Uma missão por arquivo |
-| `protocolo-onix.html` | Protótipo original em arquivo único; o CSS base do `v2/index.html` sai daqui |
-| `tools/build_index.py` | Monta `v2/index.html` a partir de `protocolo-onix.html`, `v2/hud.css`, `v2/theme.css` e `v2/body.html` |
-| `tools/assetpipe/` | Pipeline de assets (Node): empacota modelos e texturas CC0 com compressão meshopt |
+| `v2/` | O jogo: `index.html` (gerado), `js/` (simulação, render, UI, missões, roteiro), `audio/` (vozes), `models/`, `tex/` |
+| `protocolo-onix.html` | Protótipo original em arquivo único |
+| `tools/build_index.py` | Monta `v2/index.html` |
+| `tools/assetpipe/` | Empacota modelos e texturas CC0 da versão web |
 | `tools/gen_vo.py`, `tools/vo_en.py` | Geração das falas (vozes provisórias) |
-| `tools/dev/bot.js` | Bot de balanceamento que joga campanhas em simulação acelerada |
-| `tools/patch_*.py` | Histórico das mudanças grandes, aplicadas como patches; o código atual em `v2/` é a referência |
-| `deploy/` | Configuração do Cloudflare Workers (assets estáticos) |
-
-## Rodar localmente
+| `tools/dev/bot.js` | Bot de balanceamento |
+| `deploy/` | Configuração do Cloudflare Workers |
 
 ```bash
 python tools/build_index.py .
 python -m http.server 8766 --directory v2
 ```
 
-Depois abra http://localhost:8766.
-
-## Refazer os assets
-
-Os pacotes originais (Quaternius, Kenney, Poly Haven) não estão no repositório. Baixe-os numa pasta `assets_dl/` e rode:
-
-```bash
-cd tools/assetpipe && npm install
-node build.mjs ../../assets_dl ../../v2/models
-node props.mjs ../../assets_dl ../../v2/models
-node textures.mjs ../../assets_dl/polyhaven ../../v2/tex
-for f in chars anims cars props; do node tojson.mjs ../../v2/models/$f.glb ../../v2/models/$f.json; done
-```
-
 ## Créditos
 
-Modelos 3D e texturas são CC0 (domínio público): Quaternius, Kenney e Poly Haven. Detalhes em [`v2/models/CREDITS.txt`](v2/models/CREDITS.txt).
+- **Versão Godot:**
+  - Texturas, prédios, objetos, carros e árvores foram feitos por código neste repositório.
+  - Os humanos usam o MPFB2/MakeHuman: o código é GPL e os ativos (corpos, peles, roupas, cabelos) são CC0.
+  - As animações vêm do banco de captura de movimento da Carnegie Mellon University (mocap.cs.cmu.edu), na conversão para BVH de Bruce Hahne, de uso livre.
+- **Versão web:** usa modelos e texturas CC0 de Quaternius, Kenney e Poly Haven. Detalhes em [`v2/models/CREDITS.txt`](v2/models/CREDITS.txt).

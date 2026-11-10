@@ -6,3 +6,6 @@ deploy/public/
 deploy/.wrangler/
 __pycache__/
 *.pyc
+# Godot: cache de importação e texturas geradas (rodar tools/texgen/texgen.py)
+godot/.godot/
+godot/assets/tex/*.png
