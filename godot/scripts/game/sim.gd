@@ -1007,6 +1007,24 @@ func equip_first_weapon(u: Unit) -> bool:
 	return false
 
 
+## Agentes dentro do carro atiram sozinhos pela janela no inimigo mais próximo (com menos precisão).
+func car_fire(u: Unit, dt: float) -> void:
+	upd_neuro(u, dt)
+	var it = u.inv[u.eq] if u.eq >= 0 else null
+	if it == null or not GD.WD[it.t].get("arma", false) or GD.WD[it.t].get("flame", false):
+		return
+	var w: Dictionary = GD.WD[it.t]
+	var rng: float = w.alcance * u.rng_mul * u.neuro.rng
+	u.scan_t -= dt
+	if u.scan_t <= 0:
+		u.scan_t = .3
+		u.auto_t = nearest_hostile(u, rng)
+	var t := u.auto_t
+	if t and not t.dead and is_enemy_of(u, t) and u.dist_to(t) <= rng and M.los(u.x, u.y, t.x, t.y):
+		aim_at(u, t.x, t.y)
+		fire_weapon(u, it.t, it, t.x, t.y, u.neuro.acc * .75, u.neuro.rof, u.neuro.rng)
+
+
 func upd_agent(u: Unit, dt: float) -> void:
 	upd_neuro(u, dt)
 	var NEURO: Dictionary = u.neuro
@@ -1287,6 +1305,8 @@ func update(dt: float) -> void:
 			u.x = u.in_car.x
 			u.y = u.in_car.y
 			u.cur_spd = 0
+			if u.kind == "agente":
+				car_fire(u, dt)
 			continue
 		if u.hj_t > 0:
 			u.hj_t -= dt
@@ -1547,6 +1567,7 @@ func spawn_rival(id: String, px: float, py: float) -> Unit:
 	var u := M.mk_unit("inimigo", px, py)
 	u.rival = id
 	u.nome = R.nome
+	u.seed = Portraits.RIVAL_SEED.get(id, u.seed)
 	u.w = R.w
 	u.mun = GD.WD[R.w].pente
 	u.hp = R.hp

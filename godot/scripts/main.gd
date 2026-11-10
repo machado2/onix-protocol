@@ -38,6 +38,27 @@ func _ready() -> void:
 	if cfg.load(CFG) == OK:
 		quality = cfg.get_value("video", "quality", quality)
 	quality = _arg("--quality", quality)
+	if _arg("--i18ncheck") != "":
+		var io := _arg("--i18ncheck").split(",")
+		var src = JSON.parse_string(FileAccess.get_file_as_string(io[0]))
+		var out := []
+		var pt := RegEx.new()
+		pt.compile("[ãõçáéíóúâêôàÃÕÇÁÉÍÓÚÂÊÔ]|\b(de|do|da|em|para|com|não|os|as|um|uma)\b")
+		for s in src:
+			var x := String(s).replace("%s", "Corvo").replace("%d", "3").replace("%.1f", "2.5").replace("%02d", "05").replace("%.0f", "4").replace("%%", "%")
+			var r: String = Lang.en.t(x)
+			if io.size() > 2:
+				out.append(x + "  =>  " + r)
+			elif r == x:
+				out.append(String(s))
+		var f := FileAccess.open(io[1], FileAccess.WRITE)
+		f.store_string(JSON.stringify(out, "  "))
+		print("I18NCHECK ", out.size(), "/", src.size())
+		get_tree().quit()
+		return
+	if _arg("--portraittest") != "":
+		Portraits.test(_arg("--portraittest"))
+		return
 	if _arg("--simtest") != "":
 		add_child(load("res://scripts/dev/simtest.gd").new())
 		return

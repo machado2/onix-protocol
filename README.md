@@ -47,6 +47,17 @@ Sem argumentos, o jogo abre a campanha. A cidade 3D gira ao fundo dos menus.
 - **Laboratório.** 23 pesquisas em 5 áreas. Cientistas produzem PD e recebem salário.
 - **Interceptações.** Mensagens dos Ponteiros e do Conselho, e a escolha final sobre o Coral.
 
+### Idioma, retratos e pintura do chão
+
+- **Economia.** Ganhando os 10 distritos em sequência, o caixa passa de $18 mil para cerca de $298 mil, enquanto a árvore de pesquisa (2.480 PD) exige contratar cientistas: com os 3 iniciais ela levaria 83 dias. Os números são os da versão web; ajustar o equilíbrio pede partidas reais.
+- **Inglês.** Há interface e vozes em inglês; o idioma se escolhe no título e fica salvo.
+  - O tradutor é o `scripts/core/i18n_en.gd`, registrado no `TranslationServer` pelo autoload `Lang`, e traduz sozinho todo texto da interface.
+  - Os dicionários e as regras vêm da versão web (`assets/i18n_en*.json`, `assets/i18n_rules_en*.json`).
+  - As falas em inglês ficam em `assets/audio/vo_en`.
+  - `--i18nmiss=arquivo` lista as frases que ficaram sem tradução.
+- **Retratos.** O autoload `Portraits` renderiza o rosto dos próprios modelos 3D num mundo à parte. Os retratos aparecem no arsenal, no briefing, nas interceptações e nos cartões do HUD.
+- **Pintura do chão.** Marcas de pátio, faixas de segurança, heliportos e pisos das missões feitas à mão (`static func paint` em cada missão, `MPaint`) viram um decal sobre o chão. Personagens e carros ficam na camada visual 2, então os decais não os pintam.
+
 ### Carros e dicas
 
 - **Carros.** O tráfego é simulado: segue a faixa (mão direita), para atrás de pedestres e de outros carros, buzina e dá a volta no mapa. Com agentes selecionados, clique num carro para entrar. Depois, clique no mapa para dirigir pelas ruas. A tecla V faz o esquadrão descer. Em velocidade, o carro atropela quem estiver na frente.
@@ -82,6 +93,9 @@ Opções depois de `--`:
 - `--mission=docas|favela|…|torre` ou `--mission=assassinato|extracao|sabotagem|eliminacao`: pula a campanha e abre uma missão de teste.
 - `--camptest=pasta [--launch=N] [--rich] [--revolt] --auto --speed=4`: percorre as telas da campanha e salva uma captura de cada uma. Com `--launch`, também joga a missão do distrito N no piloto automático e captura o relatório. Usa `user://teste.sav`.
 - `--recaudio=arquivo.wav`: grava a saída de áudio. Com `--audio-driver Dummy` não toca nada nas caixas de som.
+- `--lang=en|pt`: força o idioma.
+- `--i18ncheck=textos.json,saida.json`: passa pelo tradutor os textos extraídos do código por `tools/i18n_extract.py` e lista os que ficam sem tradução.
+- `--portraittest=pasta`: grava um retrato em quatro ângulos.
 - `--headless -- --simtest`: testa a simulação sem gráficos (Chave Fantasma, manto, incendiária, implantes, pesquisas, resultado).
 - `--shot=arquivo.jpg --frames=120`: salva uma captura e imprime o tempo de GPU.
 - `--seed`: muda o distrito gerado.

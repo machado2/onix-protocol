@@ -75,6 +75,10 @@ func start(map: Dictionary, builder: CityBuilder, tipo: String, dif: int, seed: 
 	mprops.name = "ObjetosDeMissao"
 	add_child(mprops)
 	mprops.setup(self)
+	if mdef != null and mdef.get_script_method_list().any(func(m): return m.name == "paint"):
+		var P := MPaint.new(M)
+		mdef.paint(P)
+		add_child(P.make_decal())
 	for u in M.units:
 		_make_view(u)
 	for c in M.cars:
@@ -102,7 +106,8 @@ func start(map: Dictionary, builder: CityBuilder, tipo: String, dif: int, seed: 
 	if mdef != null:
 		S = MS.new(M, sim, self)
 		mdef.run(S, M)
-	hud.add_log("Missão: %s. %s" % [GD.TIPOS[tipo], M.objective_text()], "cyan")
+	if mdef == null:
+		hud.add_log("Missão: %s. %s" % [GD.TIPOS[tipo], M.objective_text()], "cyan")
 	auto = "--auto" in OS.get_cmdline_user_args()
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--speed="):
@@ -646,7 +651,7 @@ func _on_fx(kind: String, d: Dictionary) -> void:
 
 # ---------------------------------------------------------------- falas com legenda
 func _setup_vo() -> void:
-	var f := FileAccess.open("res://assets/audio/vo.json", FileAccess.READ)
+	var f := FileAccess.open(Lang.vo_json(), FileAccess.READ)
 	if f:
 		vo_lines = JSON.parse_string(f.get_as_text())
 	vo_player = AudioStreamPlayer.new()
@@ -662,7 +667,7 @@ func say(key: String) -> void:
 	var txt: String = line[1]
 	hud.subtitle(txt)
 	sub_t = 1.5 + txt.length() * .055
-	var path := "res://assets/audio/vo/%s.mp3" % line[0]
+	var path := Lang.vo_dir() + "%s.mp3" % line[0]
 	if ResourceLoader.exists(path):
 		vo_player.stream = load(path)
 		vo_player.play()
@@ -709,7 +714,7 @@ func bark(key: String, u: Unit = null) -> void:
 		i = (i + 1) % opts.size()
 	bark_file[k] = opts[i][0]
 	bark_last[key] = now
-	var path := "res://assets/audio/vo/%s.mp3" % opts[i][0]
+	var path := Lang.vo_dir() + "%s.mp3" % opts[i][0]
 	if not ResourceLoader.exists(path):
 		return
 	var s: AudioStream = load(path)

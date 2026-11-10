@@ -103,6 +103,16 @@ static func alive(M: Mission) -> Array:
 	return cell(M).filter(func(u): return not u.dead and not u.follower)
 
 
+static func paint(P: MPaint) -> void:
+	var TS := MPaint.TS
+	var x := 25.0
+	while x < 54:
+		P.fill(x * TS, 19.1 * TS, TS * .7, 3, Color(.85, .69, .13, .5))
+		P.fill(x * TS, 22.8 * TS, TS * .7, 3, Color(.85, .69, .13, .5))
+		x += 1.5
+	P.fill((GANG.x - .8) * TS, 19 * TS, 1.6 * TS, 1.2 * TS, Color(1, .24, .35, .35))
+
+
 static func run(S: MS, M: Mission) -> void:
 	S.obj("kill", "Elimine a célula do Consórcio (0/6)", true)
 	S.obj("moor", "Opcional: trave as amarras do dirigível (ponta do píer central)")

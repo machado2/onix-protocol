@@ -87,6 +87,33 @@ static func build(B: MB) -> void:
 	B.lanes([{y = 50.5, dx = 1, dy = 0}, {y = 51.5, dx = -1, dy = 0}], 6)
 
 
+static func paint(P: MPaint) -> void:
+	var TS := MPaint.TS
+	P.fill(7 * TS, 3 * TS, 50 * TS, 44 * TS, Color(.12, .09, .05, .28))
+	for i in 60:
+		P.ellipse((7 + P.rng.randf() * 49) * TS, (3 + P.rng.randf() * 43) * TS, 6 + P.rng.randf() * 16, 3 + P.rng.randf() * 9, Color(.03, .03, .04, .25))
+	for R in REACT:
+		var x0: float = (floorf(R.x) - 2) * TS
+		var y0: float = (floorf(R.y) - 2) * TS
+		var S := 5.0 * TS
+		var s := 0.0
+		while s < S:
+			var c := Color("#15161a") if int(s / 8) % 2 else Color("#d8b020")
+			P.fill(x0 + s, y0, 8, 4, c)
+			P.fill(x0 + s, y0 + S - 4, 8, 4, c)
+			P.fill(x0, y0 + s, 4, 8, c)
+			P.fill(x0 + S - 4, y0 + s, 4, 8, c)
+			s += 8
+	var y := 3.0
+	var x := 7.0
+	while x < 56:
+		P.fill(x * TS, 16.6 * TS, TS * .6, 3, Color(.85, .69, .13, .45))
+		x += 1.2
+	while y < 47:
+		P.fill(43.6 * TS, y * TS, 3, TS * .6, Color(.85, .69, .13, .45))
+		y += 1.2
+
+
 static func run(S: MS, M: Mission) -> void:
 	S.obj("r", "Instale cargas nos três reatores (0/3)", true)
 	S.obj("quiet", "Opcional: instale as três cargas sem disparar o alarme")

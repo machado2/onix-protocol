@@ -722,6 +722,7 @@ func car_view(c: Dictionary) -> void:
 		model = "sedan"
 	mi.mesh = city.styled_mesh(model, "car")
 	mi.set_instance_shader_parameter("paint_col", Color(c.col.r, c.col.g, c.col.b, 1))
+	mi.layers = 2
 	add_child(mi)
 	var hl := SpotLight3D.new()
 	hl.light_color = Color(1, .93, .8)

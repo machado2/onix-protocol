@@ -184,6 +184,21 @@ static func build(B: MB) -> void:
 	B.lanes([{y = 50.5, dx = 1, dy = 0}, {y = 51.5, dx = -1, dy = 0}], 6)
 
 
+static func paint(P: MPaint) -> void:
+	var TS := MPaint.TS
+	for y in range(8, 13):
+		for x in range(14, 43):
+			P.fill(x * TS, y * TS, TS, TS, Color(.86, .82, .75, .12 if (x + y) % 2 else .05))
+	var mw = P.M.ex.get("maze")
+	if mw != null:
+		for y in range(MY, MY + L):
+			for x in range(MX, MX + L):
+				if not mw[y - MY][x - MX]:
+					P.fill(x * TS + 3, y * TS + 3, TS - 6, TS - 6, Color(.59, .47, .31, .35))
+	for x in range(46, 52):
+		P.fill(x * TS, 12 * TS + 2, TS * .5, 4, Color(1, .69, .24, .5))
+
+
 static func run(S: MS, M: Mission) -> void:
 	S.obj("kill", "Elimine o %s" % ALVO, true)
 	S.obj("quiet", "Opcional: elimine o senador sem dar tempo ao alarme")

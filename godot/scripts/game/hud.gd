@@ -268,7 +268,7 @@ class NeuroDial extends Control:
 		draw_rect(Rect2(1, h - fh, size.x - 2, 2), col.lightened(.4))
 		draw_rect(Rect2(0, 0, size.x, h), Color("#26324a"), false, 1)
 		var f := get_theme_default_font()
-		draw_string(f, Vector2(0, size.y - 2), label, HORIZONTAL_ALIGNMENT_CENTER, size.x, 10, Color("#7e8ba4"))
+		draw_string(f, Vector2(0, size.y - 2), tr(label), HORIZONTAL_ALIGNMENT_CENTER, size.x, 10, Color("#7e8ba4"))
 
 	func _set_from(y: float) -> void:
 		if locked:
@@ -301,8 +301,16 @@ func _card(a: Unit) -> Button:
 	v.set_anchors_preset(Control.PRESET_FULL_RECT)
 	v.offset_left = 10
 	v.offset_top = 6
-	v.offset_right = -10
+	v.offset_right = -58
 	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var pr := TextureRect.new()
+	pr.texture = Portraits.tex("agent", a.seed)
+	pr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	pr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	pr.size = Vector2(46, 58)
+	pr.position = Vector2(138, 8)
+	pr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.add_child(pr)
 	var nm := _label("%d  %s" % [a.num, a.nome.to_upper()], 15, Color("#eef3fa"))
 	nm.name = "nm"
 	v.add_child(nm)

@@ -370,6 +370,7 @@ func mk_agent(k: int, px: float, py: float, ag) -> Unit:
 	if ag is Dictionary:
 		u.ag = ag
 		u.nome = ag.nome
+		u.seed = int(ag.id)
 		var im: Dictionary = ag.imp
 		u.max_hp = 150 + 45 * im.chassi
 		u.hp = u.max_hp

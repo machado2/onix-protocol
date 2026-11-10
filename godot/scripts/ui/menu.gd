@@ -261,6 +261,25 @@ static func _n(v: float) -> String:
 	return str(int(v)) if is_equal_approx(v, roundf(v)) else str(v).replace(".", ",")
 
 
+func _pic(t: Texture2D, w: float, h: float, border := Color(0, 0, 0, 0)) -> Control:
+	var p := PanelContainer.new()
+	var s := StyleBoxFlat.new()
+	s.bg_color = Color("#0b1020")
+	s.border_color = border if border.a > 0 else LINE
+	s.set_border_width_all(1)
+	p.add_theme_stylebox_override("panel", s)
+	var r := TextureRect.new()
+	r.texture = t
+	r.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	r.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	r.custom_minimum_size = Vector2(w, h)
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	p.add_child(r)
+	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	p.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	return p
+
+
 func _sep() -> HSeparator:
 	var s := HSeparator.new()
 	var st := StyleBoxLine.new()
@@ -437,6 +456,15 @@ func show_title() -> void:
 	tc.toggled.connect(func(on): Game.set_tips(on))
 	vh.add_child(tc)
 	v.add_child(vh)
+	var lh := _box(false, 10)
+	lh.add_child(_lbl("IDIOMA", 12, DIM, f_mono))
+	for p in [["pt", "Português"], ["en", "English"]]:
+		var lb := _small(_btn(p[1], func():
+			Lang.set_lang(p[0])
+			show_title(), Lang.lang == p[0]))
+		lb.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+		lh.add_child(lb)
+	v.add_child(lh)
 	var keys := _rich("[font_size=12][color=#7e8ba4]Botão esq. mover · selecionar · arrastar seleção\nBotão dir. atacar · disparar · arremessar · invadir\n1–4 agentes · Q/E armas · H guardar · F predefinição neural · Z/X girar câmera · Espaço pausa · Esc menu[/color][/font_size]", 12)
 	v.add_child(_sep())
 	v.add_child(keys)
@@ -603,7 +631,10 @@ func _squad_list() -> VBoxContainer:
 		v.add_child(_para("Nenhum agente no esquadrão. Monte a equipe no arsenal.", 15, RED))
 	for a in sq:
 		var h := _box(false, 12)
-		h.add_child(_lbl(a.nome, 16, CYAN, f_bold))
+		h.add_child(_pic(Portraits.agent(a), 32, 40))
+		var nl := _lbl(a.nome, 16, CYAN, f_bold)
+		nl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		h.add_child(nl)
 		var sp := Control.new()
 		sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		h.add_child(sp)
@@ -676,6 +707,7 @@ func show_arsenal() -> void:
 		nb.pressed.connect(func():
 			ars_sel = q.id
 			show_arsenal())
+		row.add_child(_pic(Portraits.agent(q), 36, 45, AMBER if q.id == ars_sel else LINE))
 		row.add_child(nb)
 		var inS: bool = q.id in G.esq
 		var sb := _small(_btn("No esquadrão" if inS else "Reserva", func():
@@ -707,8 +739,14 @@ func show_arsenal() -> void:
 	var c2 := _box(true, 12)
 	var a = Camp.agent(ars_sel)
 	if a != null:
-		c2.add_child(_lbl(a.nome, 34, FG, f_bold))
-		c2.add_child(_lbl("%d missões · %d abates" % [a.missoes, a.abates], 13, DIM, f_mono))
+		var ah := _box(false, 18)
+		ah.add_child(_pic(Portraits.agent(a), 112, 140, AMBER))
+		var av := _box(true, 6)
+		av.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		av.add_child(_lbl(a.nome, 34, FG, f_bold))
+		av.add_child(_lbl("%d missões · %d abates" % [a.missoes, a.abates], 13, DIM, f_mono))
+		ah.add_child(av)
+		c2.add_child(ah)
 		c2.add_child(_eyebrow("Implantes cibernéticos"))
 		var cap := Camp.imp_cap()
 		for k in Camp.IMP:
@@ -921,7 +959,12 @@ func show_inbox() -> void:
 	riv.add_child(_lbl("OS PONTEIROS", 12, DIM, f_mono))
 	for id in ["navalha", "sibila", "ferro", "mariposa", "juiz"]:
 		var s: Dictionary = G.rivais.get(id, {})
-		var v := _box(true, 0)
+		var v := _box(true, 2)
+		var dead: bool = s.get("morto", false)
+		var pic := _pic(Portraits.rival(id), 64, 80, Color(Camp.RIVAL_INFO[id].trim) if not dead else LINE)
+		if dead:
+			pic.modulate = Color(.45, .45, .5)
+		v.add_child(pic)
 		v.add_child(_lbl(GD.RIVALS[id].nome, 15, Color(Camp.RIVAL_INFO[id].trim) if not s.get("morto", false) else DIM, f_bold))
 		v.add_child(_lbl("morto" if s.get("morto", false) else ("%d fuga(s)" % s.fugas if s.get("fugas", 0) else "à solta"), 11, DIM, f_mono))
 		riv.add_child(v)
@@ -1019,10 +1062,10 @@ class Frame extends PanelContainer:
 			draw_line(o, o + Vector2(0, L * d.y), c, 2)
 		if code != "":
 			var f := get_theme_default_font()
-			var w := f.get_string_size(code, HORIZONTAL_ALIGNMENT_LEFT, -1, 10).x + 24
+			var w := f.get_string_size(tr(code), HORIZONTAL_ALIGNMENT_LEFT, -1, 10).x + 24
 			var x := s.x - 22 - w
 			draw_colored_polygon(PackedVector2Array([Vector2(x + 7, 0), Vector2(x + w, 0), Vector2(x + w, 17), Vector2(x, 17)]), c)
-			draw_string(f, Vector2(x + 14, 12.5), code, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color("#140c02"))
+			draw_string(f, Vector2(x + 14, 12.5), tr(code), HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color("#140c02"))
 
 
 ## Mapa tático: distritos de Nova Aurora como polígonos, coloridos por dono e disponibilidade.
@@ -1072,7 +1115,7 @@ class MapView extends Control:
 			for piece in Geometry2D.intersect_polyline_with_polygon(seg, bay):
 				draw_polyline(piece, Color(.08, .17, .26, .9), 1.5)
 		var bc := _pt([850, 470])
-		draw_string(fm, bc - Vector2(150, 0), "BAÍA DE AURORA", HORIZONTAL_ALIGNMENT_CENTER, 300, 12, Color("#2e5a80"))
+		draw_string(fm, bc - Vector2(150, 0), tr("BAÍA DE AURORA"), HORIZONTAL_ALIGNMENT_CENTER, 300, 12, Color("#2e5a80"))
 		for i in Camp.DIST.size():
 			var d: Dictionary = Camp.DIST[i]
 			var st := _state(i)
@@ -1099,14 +1142,14 @@ class MapView extends Control:
 			var fs := clampi(int(20 * s / .9), 13, 24)
 			draw_string(f, c + Vector2(-160, -2), d.nome.to_upper(), HORIZONTAL_ALIGNMENT_CENTER, 320, fs, Color(1, 1, 1, .92 if st != "enemy" else .55))
 			var sub := ("ÔNIX" if st == "own" else ("QG HÉLICE" if d.get("hq", false) else "HÉLICE")) + " · NV %d" % d.dif
-			draw_string(fm, c + Vector2(-160, 18), sub, HORIZONTAL_ALIGNMENT_CENTER, 320, 11, Color(col, .9))
+			draw_string(fm, c + Vector2(-160, 18), tr(sub), HORIZONTAL_ALIGNMENT_CENTER, 320, 11, Color(col, .9))
 			if T != null:
 				var w := 84.0
 				draw_rect(Rect2(c + Vector2(-w / 2, 28), Vector2(w, 5)), Color("#121a2a"))
 				draw_rect(Rect2(c + Vector2(-w / 2, 28), Vector2(w * T.lealdade / 100.0, 5)), CampaignMenu._loy_col(T.lealdade))
 				if T.revolta:
-					draw_string(fm, c + Vector2(-160, 48), "REVOLTA", HORIZONTAL_ALIGNMENT_CENTER, 320, 11, Color(CampaignMenu.RED, .6 + .4 * sin(t * 6)))
-		draw_string(fm, off + Vector2(8, 16), "NOVA AURORA · GRADE TÁTICA", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(.5, .55, .65, .55))
+					draw_string(fm, c + Vector2(-160, 48), tr("REVOLTA"), HORIZONTAL_ALIGNMENT_CENTER, 320, 11, Color(CampaignMenu.RED, .6 + .4 * sin(t * 6)))
+		draw_string(fm, off + Vector2(8, 16), tr("NOVA AURORA · GRADE TÁTICA"), HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(.5, .55, .65, .55))
 
 	func _hit(p: Vector2) -> int:
 		for i in Camp.DIST.size():

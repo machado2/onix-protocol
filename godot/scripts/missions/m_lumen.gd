@@ -133,6 +133,20 @@ static func identify(S: MS, M: Mission, silent := false) -> void:
 		S.say("ctl:m6_real")
 
 
+static func paint(P: MPaint) -> void:
+	var TS := MPaint.TS
+	for y in range(14, 41):
+		for x in range(14, 45):
+			P.fill(x * TS + 1, y * TS + 1, TS - 2, TS - 2, Color("#5a5868") if (x + y) % 2 else Color("#4c4a5a"))
+	for y in range(21, 32):
+		for x in range(21, 36):
+			P.fill(x * TS, y * TS, TS, TS, Color("#4a3426") if x % 2 else Color("#3e2c20"))
+			P.fill(x * TS, y * TS, TS, 2, Color(.6, .55, .45))
+	P.fill(49 * TS, 26 * TS, 8 * TS, 13 * TS, Color("#2a2c34"))
+	P.ring(HELI.x * TS, HELI.y * TS, 2.6 * TS, Color("#ffd36b"), 4)
+	P.helipad_h(HELI.x * TS, HELI.y * TS, TS * .5, Color("#ffd36b"))
+
+
 static func run(S: MS, M: Mission) -> void:
 	S.obj("kill", "Elimine %s (alvo verdadeiro não identificado)" % ALVO, true)
 	S.obj("clean", "Opcional: não mate nenhum sósia")

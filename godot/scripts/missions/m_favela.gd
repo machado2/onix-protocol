@@ -109,6 +109,16 @@ static func build(B: MB) -> void:
 	B.lanes([{y = 50.5, dx = 1, dy = 0}, {y = 51.5, dx = -1, dy = 0}], 5)
 
 
+static func paint(P: MPaint) -> void:
+	var TS := MPaint.TS
+	var c := Color(.92, .94, .9, .55)
+	P.stroke_rect(5.3 * TS, 30.3 * TS, 12.4 * TS, 8.4 * TS, c)
+	P.line(11.5 * TS, 30.3 * TS, 11.5 * TS, 38.7 * TS, c)
+	P.ring(11.5 * TS, 34.5 * TS, 1.4 * TS, c)
+	for k in 30:
+		P.fill((5.5 + P.rng.randf() * 12) * TS, (30.5 + P.rng.randf() * 8) * TS, 10, 6, Color(.24, .16, .12, .35))
+
+
 static func run(S: MS, M: Mission) -> void:
 	S.obj("reach", "Encontre a Dra. Sofia Tanaka na clínica do Consórcio", true)
 	S.obj("power", "Opcional: desligue o gerador da clínica")

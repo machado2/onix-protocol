@@ -85,6 +85,19 @@ static func build(B: MB) -> void:
 	B.lanes([{y = 50.5, dx = 1, dy = 0}, {y = 51.5, dx = -1, dy = 0}], 6)
 
 
+static func paint(P: MPaint) -> void:
+	var TS := MPaint.TS
+	for x in range(6, 51, 2):
+		P.fill(x * TS, 30 * TS, TS, TS * .25, Color(1, .24, .35, .18))
+	for y in range(11, 27):
+		for x in range(16, 41):
+			P.fill(x * TS + 1, y * TS + 1, TS - 2, TS - 2, Color("#22232c") if (x + y) % 2 else Color("#1a1b22"))
+	P.ring(28.5 * TS, 18.5 * TS, 4.5 * TS, Color(1, .24, .35, .55))
+	for y in range(4, 10):
+		for x in range(16, 41):
+			P.fill(x * TS + 2, y * TS + 2, TS - 4, TS - 4, Color(.22, .91, 1, .06))
+
+
 static func run(S: MS, M: Mission) -> void:
 	S.obj("gate", "Invada os dois terminais de segurança da praça (0/2)", true)
 	watch_gate(S, M)

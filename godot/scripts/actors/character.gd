@@ -97,6 +97,7 @@ func setup(k: String, seed: int) -> void:
 	var tint: Color = CLOTH_TINT.get(k, Color.WHITE)
 	for mi in model.find_children("*", "MeshInstance3D", true, false):
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		mi.layers = 2   # camada dos atores: decais do chão (sangue, pintura) não os pintam
 		var nm := String(mi.name)
 		var gear := nm.begins_with("gear_")
 		for i in mi.mesh.get_surface_count():

@@ -11,8 +11,10 @@ config/features=PackedStringArray("4.7", "Forward Plus")
 [autoload]
 
 Shot="*res://scripts/dev/shot.gd"
+Lang="*res://scripts/core/lang.gd"
 Camp="*res://scripts/campaign/camp.gd"
 Snd="*res://scripts/core/snd.gd"
+Portraits="*res://scripts/ui/portraits.gd"
 
 [display]
 

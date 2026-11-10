@@ -108,6 +108,17 @@ static func build(B: MB) -> void:
 	B.lanes([{y = 50.5, dx = 1, dy = 0}, {y = 51.5, dx = -1, dy = 0}], 5)
 
 
+static func paint(P: MPaint) -> void:
+	var TS := MPaint.TS
+	P.ring(LZ.x * TS, LZ.y * TS, 2.4 * TS, Color("#5dffa0"), 4)
+	P.helipad_h(LZ.x * TS, LZ.y * TS, TS * .45, Color(.36, 1, .63, .8))
+	for y in range(4, 27):
+		for x in range(23, 38):
+			if x >= 27 and x <= 34 and y >= 16 and y <= 19:
+				continue
+			P.fill(x * TS, y * TS, TS, TS, Color(.86, .82, .75, .10 if (x + y) % 2 else .04))
+
+
 static func run(S: MS, M: Mission) -> void:
 	S.obj("reach", "Encontre o %s na estufa de vidro" % ALVO, true)
 	S.obj("ghost", "Opcional: alcance o doutor sem disparar o alarme")
