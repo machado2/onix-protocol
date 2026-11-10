@@ -125,7 +125,7 @@ func setup(g) -> void:
 	var bottom := VBoxContainer.new()
 	bottom.anchor_top = 1
 	bottom.anchor_bottom = 1
-	bottom.offset_top = -168
+	bottom.offset_top = -184
 	bottom.offset_left = 16
 	bottom.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(bottom)
@@ -139,6 +139,7 @@ func setup(g) -> void:
 		var c := _card(a)
 		cards.add_child(c)
 		card_nodes.append(c)
+	cards.add_child(_neuro_panel())
 	box = Panel.new()
 	var bs := StyleBoxFlat.new()
 	bs.bg_color = Color(.3, .85, 1, .08)
@@ -162,9 +163,135 @@ func setup(g) -> void:
 	root.add_child(pause_panel)
 
 
+# ---------------------------------------------------------------- mostradores neurais
+var dials: Array = []
+var neuro_title: Label
+var neuro_stab: Label
+var preset_btns: Array = []
+
+func _neuro_panel() -> PanelContainer:
+	var p := PanelContainer.new()
+	p.add_theme_stylebox_override("panel", _panel_style(.7))
+	p.mouse_filter = Control.MOUSE_FILTER_STOP
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 4)
+	p.add_child(v)
+	neuro_title = _label("NEURAL", 11, Color(.55, .85, 1, .8))
+	v.add_child(neuro_title)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 6)
+	v.add_child(h)
+	for k in [["r", "REF", "Reflexo: velocidade e cadência"], ["p", "PER", "Percepção: precisão e alcance"], ["c", "CTR", "Controle: discrição, resistência e sonda"]]:
+		var d := NeuroDial.new()
+		d.key = k[0]
+		d.label = k[1]
+		d.tooltip_text = k[2]
+		d.hud = self
+		h.add_child(d)
+		dials.append(d)
+	var pv := VBoxContainer.new()
+	pv.add_theme_constant_override("separation", 3)
+	h.add_child(pv)
+	for i in Sim.PRESETS.size():
+		var b := Button.new()
+		b.text = Sim.PRESETS[i].n
+		b.focus_mode = Control.FOCUS_NONE
+		b.add_theme_font_size_override("font_size", 10)
+		var st := StyleBoxFlat.new()
+		st.bg_color = Color(.04, .06, .1, .9)
+		st.border_color = Color(.15, .2, .29)
+		st.set_border_width_all(1)
+		st.content_margin_left = 6
+		st.content_margin_right = 6
+		st.content_margin_top = 3
+		st.content_margin_bottom = 3
+		b.add_theme_stylebox_override("normal", st)
+		var hv := st.duplicate()
+		hv.border_color = CYAN
+		b.add_theme_stylebox_override("hover", hv)
+		b.add_theme_stylebox_override("pressed", hv)
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.pressed.connect(func(): game.sim.set_preset(i))
+		b.tooltip_text = "Tecla F alterna as predefinições"
+		pv.add_child(b)
+		preset_btns.append(b)
+	neuro_stab = _label("", 11, Color("#9fb0c4"))
+	v.add_child(neuro_stab)
+	return p
+
+
+func _refresh_neuro() -> void:
+	var M: Mission = game.M
+	var L: Unit = M.sel[0] if not M.sel.is_empty() else null
+	if L and L.dead:
+		L = null
+	for d in dials:
+		d.value = L.nr[d.key] if L else 0.0
+		d.locked = L == null or L.colapso > 0
+		d.queue_redraw()
+	neuro_title.text = "NEURAL · " + (L.nome.to_upper() if L else "—")
+	var pi: int = game.sim.preset_of(L) if L else -1
+	for i in preset_btns.size():
+		preset_btns[i].add_theme_color_override("font_color", COLS.amber if i == pi else Color("#9fb0c4"))
+	if L == null:
+		neuro_stab.text = ""
+	elif L.colapso > 0:
+		neuro_stab.text = "COLAPSO %.0fs" % L.colapso
+		neuro_stab.add_theme_color_override("font_color", COLS.red)
+	else:
+		neuro_stab.text = "ESTAB %d/%d" % [roundi(L.estab), roundi(L.max_estab)]
+		neuro_stab.add_theme_color_override("font_color", COLS.amber if L.estab < L.max_estab * .35 else Color("#9fb0c4"))
+
+
+## Mostrador vertical: arraste ou role a roda para ajustar o canal neural dos agentes selecionados.
+class NeuroDial extends Control:
+	var key := "r"
+	var label := ""
+	var value := .5
+	var locked := false
+	var hud
+
+	func _init() -> void:
+		custom_minimum_size = Vector2(30, 62)
+		mouse_filter = Control.MOUSE_FILTER_STOP
+		mouse_default_cursor_shape = Control.CURSOR_VSIZE
+
+	func _draw() -> void:
+		var h := size.y - 14
+		draw_rect(Rect2(0, 0, size.x, h), Color("#0b0f19"))
+		var hi := value > .75
+		var col := Color("#ffa53d") if hi else Color("#4fd8ff")
+		if locked:
+			col = Color(.4, .4, .45)
+		var fh := h * value
+		draw_rect(Rect2(1, h - fh, size.x - 2, fh), Color(col, .85))
+		draw_rect(Rect2(1, h - fh, size.x - 2, 2), col.lightened(.4))
+		draw_rect(Rect2(0, 0, size.x, h), Color("#26324a"), false, 1)
+		var f := get_theme_default_font()
+		draw_string(f, Vector2(0, size.y - 2), label, HORIZONTAL_ALIGNMENT_CENTER, size.x, 10, Color("#7e8ba4"))
+
+	func _set_from(y: float) -> void:
+		if locked:
+			return
+		hud.game.sim.set_dial(key, 1.0 - clampf(y / (size.y - 14), 0, 1))
+
+	func _gui_input(e: InputEvent) -> void:
+		if e is InputEventMouseButton and e.pressed:
+			if e.button_index == MOUSE_BUTTON_LEFT:
+				_set_from(e.position.y)
+			elif not locked and e.button_index == MOUSE_BUTTON_WHEEL_UP:
+				hud.game.sim.set_dial(key, value + .1)
+			elif not locked and e.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+				hud.game.sim.set_dial(key, value - .1)
+			accept_event()
+		elif e is InputEventMouseMotion and e.button_mask & MOUSE_BUTTON_MASK_LEFT:
+			_set_from(e.position.y)
+			accept_event()
+
+
 func _card(a: Unit) -> Button:
 	var b := Button.new()
-	b.custom_minimum_size = Vector2(190, 74)
+	b.custom_minimum_size = Vector2(190, 80)
 	b.focus_mode = Control.FOCUS_NONE
 	var st := _panel_style(.7)
 	b.add_theme_stylebox_override("normal", st)
@@ -192,6 +319,17 @@ func _card(a: Unit) -> Button:
 	bar.add_theme_stylebox_override("background", bg)
 	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	v.add_child(bar)
+	var sb := ProgressBar.new()
+	sb.name = "st"
+	sb.custom_minimum_size = Vector2(0, 3)
+	sb.show_percentage = false
+	sb.max_value = 100
+	var sfg := StyleBoxFlat.new()
+	sfg.bg_color = CYAN
+	sb.add_theme_stylebox_override("fill", sfg)
+	sb.add_theme_stylebox_override("background", bg)
+	sb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	v.add_child(sb)
 	var wp := _label("", 13, CYAN)
 	wp.name = "wp"
 	v.add_child(wp)
@@ -296,9 +434,23 @@ func show_pause(on: bool) -> void:
 	var t := _label("PAUSA TÁTICA", 30, Color("#ffa53d"))
 	v.add_child(t)
 	v.add_child(_label(game.M.objective_text() if not game.M.hand else "Missão em andamento.", 16))
-	v.add_child(_label("Esq: mover, selecionar, entrar em carro · Dir: atacar, disparar, arremessar, invadir\n1–4 agentes · Q/E armas · H guardar · Z/X girar câmera · Espaço pausa · F1–F6 itens", 13, Color("#7e8ba4")))
+	v.add_child(_label("Esq: mover, selecionar, entrar em carro · Dir: atacar, disparar, arremessar, invadir\n1–4 agentes · Q/E armas · H guardar · F predefinição neural · Z/X girar câmera · Espaço pausa · F1–F6 itens", 13, Color("#7e8ba4")))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
+	var vr := HBoxContainer.new()
+	vr.add_theme_constant_override("separation", 10)
+	for k in [["mus", "Música"], ["sfx", "Efeitos"], ["vo", "Vozes"]]:
+		vr.add_child(_label(k[1], 14))
+		var s := HSlider.new()
+		s.min_value = 0
+		s.max_value = 1
+		s.step = .05
+		s.value = Snd.vol[k[0]]
+		s.custom_minimum_size = Vector2(110, 0)
+		s.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		s.value_changed.connect(func(val): Snd.set_volume(k[0], val))
+		vr.add_child(s)
+	v.add_child(vr)
 	row.add_child(_button("Continuar", func(): game.toggle_pause_menu()))
 	if Camp.active:
 		row.add_child(_button("Abortar missão", func(): game.abort()))
@@ -353,6 +505,9 @@ func refresh() -> void:
 		var c: Button = card_nodes[i]
 		var bar: ProgressBar = c.find_child("hp", true, false)
 		bar.value = a.hp
+		var sb: ProgressBar = c.find_child("st", true, false)
+		sb.value = 100.0 if a.colapso > 0 else a.estab
+		(sb.get_theme_stylebox("fill") as StyleBoxFlat).bg_color = COLS.red if a.colapso > 0 else (COLS.amber if a.nr.r + a.nr.p + a.nr.c > 1.5 else CYAN)
 		var wp: Label = c.find_child("wp", true, false)
 		if a.dead:
 			wp.text = "ABATIDO"
@@ -368,6 +523,7 @@ func refresh() -> void:
 		stl.border_color = Color(.3, .95, 1, .95) if a.sel else Color(.3, .85, 1, .25)
 		stl.set_border_width_all(2 if a.sel else 1)
 	_refresh_inv()
+	_refresh_neuro()
 	for l in lines:
 		l[1] -= get_process_delta_time()
 		l[0].modulate.a = clampf(l[1] / 2.0, 0, 1)

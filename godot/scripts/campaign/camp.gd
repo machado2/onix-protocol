@@ -432,6 +432,7 @@ func apply_result(M: Mission, di: int, revolta: bool) -> Dictionary:
 			a.inv = u.inv.map(func(it): return {t = it.t})
 			a.missoes += 1
 			a.abates += u.kills
+			a.dep = mini(50, a.get("dep", 0) + roundi(u.over * 1.5 * (.5 if has("estab") else 1.0) * (0.0 if has("limpa") else 1.0)))
 	var rep := 0
 	var bonus := 0
 	for b in M.bonus:

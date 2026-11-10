@@ -89,6 +89,9 @@ func start(map: Dictionary, builder: CityBuilder, tipo: String, dif: int, seed: 
 	hud.setup(self)
 	sim.set_sel(M.agents.duplicate())
 	_setup_vo()
+	listener = AudioListener3D.new()
+	add_child(listener)
+	listener.make_current()
 	if mdef != null:
 		S = MS.new(M, sim, self)
 		mdef.run(S, M)
@@ -120,6 +123,9 @@ func abort() -> void:
 
 
 func _exit_tree() -> void:
+	Snd.set_intensity(0)
+	Snd.engine(0)
+	Snd.duck = false
 	RenderingServer.global_shader_parameter_set("cut_pos", Vector3(0, -1000, 0))
 	RenderingServer.global_shader_parameter_set("cut_r", 0.0)
 
@@ -289,6 +295,7 @@ func _process(dt: float) -> void:
 		_autoplay(dt)
 	_update_views(dt)
 	_update_camera(dt)
+	_audio(dt)
 	fxl.tick(dt)
 	mprops.tick(dt)
 	_events()
@@ -518,6 +525,9 @@ func _unhandled_input(e: InputEvent) -> void:
 			KEY_Q: sim.cycle_weapon(-1)
 			KEY_E: sim.cycle_weapon(1)
 			KEY_H: sim.holster()
+			KEY_F:
+				if not M.sel.is_empty():
+					sim.set_preset((maxi(-1, sim.preset_of(M.sel[0])) + 1) % 3)
 			KEY_Z: cam_yaw_goal -= 45
 			KEY_X: cam_yaw_goal += 45
 			KEY_C: center_on_selection()
@@ -539,6 +549,8 @@ func _left_click(sp: Vector2, shift: bool) -> void:
 			sim.set_sel(l)
 		else:
 			sim.set_sel([u])
+			bark("ag:sel", u)
+		Snd.play("ui")
 		return
 	if M.sel.is_empty():
 		return
@@ -546,6 +558,7 @@ func _left_click(sp: Vector2, shift: bool) -> void:
 	if p.x < 0 or p.y < 0 or p.x >= C.N or p.y >= C.N:
 		return
 	sim.issue_move(p)
+	bark("ag:mov", M.sel[0])
 
 
 func _right_click(sp: Vector2) -> void:
@@ -554,6 +567,7 @@ func _right_click(sp: Vector2) -> void:
 	var u := pick_unit(sp)
 	if u and u.fac != "player":
 		sim.issue_attack(u)
+		bark("ag:atk", M.sel[0])
 	else:
 		var p := screen_to_tile(sp)
 		sim.issue_ground(p)
@@ -596,6 +610,7 @@ func _on_fx(kind: String, d: Dictionary) -> void:
 			shake = minf(1.0, shake + .6)
 		"end":
 			hud.show_end(d.win, M.reason)
+	_sound(kind, d)
 	fxl.event(kind, d)
 
 
@@ -606,10 +621,8 @@ func _setup_vo() -> void:
 	if f:
 		vo_lines = JSON.parse_string(f.get_as_text())
 	vo_player = AudioStreamPlayer.new()
-	vo_player.bus = "Master"
+	vo_player.bus = "Radio"
 	add_child(vo_player)
-	if "--mute" in OS.get_cmdline_user_args():
-		vo_player.volume_db = -80
 
 
 func say(key: String) -> void:
@@ -624,7 +637,169 @@ func say(key: String) -> void:
 	if ResourceLoader.exists(path):
 		vo_player.stream = load(path)
 		vo_player.play()
+		Snd.play("squelch")
 		sub_t = maxf(sub_t, vo_player.stream.get_length() + .3)
+		comm_until = maxf(comm_until, M.t + vo_player.stream.get_length() + .3)
+
+
+# ---------------------------------------------------------------- som: efeitos, falas curtas e trilha
+const BARK_CD := {"ag:sel": 1.2, "ag:mov": 1.4, "ag:atk": 2.5, "ag:kill": 3.0, "ag:hurt": 6.0, "ag:rel": 5.0, "pol:warn": 4.0}
+const VOICE_BUS := {ag = "Radio", ctl = "Radio", riv = "Helmet", grd = "Helmet", ene = "Helmet", pol = "Mega", civ = "SFX", vip = "SFX", sci = "SFX"}
+var listener: AudioListener3D
+var comm_until := 0.0
+var bark_last := {}
+var bark_file := {}
+var hum_t := 0.0
+var vent_state := {}
+var had_train := false
+
+
+func _voice_of(u: Unit) -> String:
+	return "f" if u and u.seed % 2 == 1 else "m"
+
+
+## Fala curta pelo rádio do esquadrão (ag:*, ctl:*) ou no mundo (riv:*, pol:*...). Respeita intervalos e o canal ocupado.
+func bark(key: String, u: Unit = null) -> void:
+	if M.cine or M.ended and not key.begins_with("ctl:"):
+		return
+	var k := key
+	if key.begins_with("ag:"):
+		k = "%s:%s" % [key, _voice_of(u)]
+	var role := k.split(":")[0]
+	var comm := role == "ag" or role == "ctl"
+	var now := M.t
+	if now - bark_last.get(key, -99.0) < BARK_CD.get(key, 2.5):
+		return
+	if comm and (now < comm_until or talking()):
+		return
+	var opts: Array = vo_lines.get(k, [])
+	if opts.is_empty():
+		return
+	var i := randi() % opts.size()
+	if opts.size() > 1 and opts[i][0] == bark_file.get(k, ""):
+		i = (i + 1) % opts.size()
+	bark_file[k] = opts[i][0]
+	bark_last[key] = now
+	var path := "res://assets/audio/vo/%s.mp3" % opts[i][0]
+	if not ResourceLoader.exists(path):
+		return
+	var s: AudioStream = load(path)
+	var pitch := .95 + float(u.seed % 10) / 100.0 if u and role == "ag" else randf_range(.97, 1.03)
+	if comm:
+		comm_until = now + s.get_length() / pitch + .25
+		Snd.voice(s, "Radio", null, pitch)
+		hud.add_log("%s: %s" % [(u.nome.to_upper() if u else "CONTROLE"), opts[i][1]], "cyan" if role == "ag" else "amber")
+	else:
+		Snd.voice(s, VOICE_BUS.get(role, "SFX"), _world(u.x, u.y, 1.6) if u else null, pitch)
+
+
+func _sound(kind: String, d: Dictionary) -> void:
+	match kind:
+		"muzzle":
+			var w: Dictionary = GD.WD.get(d.get("wk", ""), {})
+			if w.has("som"):
+				Snd.play(w.som, _world(d.x, d.y, 1.4), -2.0 if d.u.fac != "player" else 0.0)
+		"explosion":
+			Snd.play("boom", _world(d.x, d.y, 1))
+		"glass":
+			Snd.play("glass", _world(d.x, d.y, 2))
+		"car_dead":
+			Snd.play("crash", _world(d.c.x, d.c.y, 1))
+		"blood":
+			Snd.play("hit", _world(d.x, d.y, 1.2))
+		"tracer":
+			if d.get("wall", false) and randf() < .3:
+				Snd.play("ric", _world(d.x2, d.y2, 1.3))
+		"death":
+			var u: Unit = d.u
+			if not u.mech:
+				Snd.play("die", _world(u.x, u.y, 1))
+			var src = d.get("src")
+			if u.kind == "agente":
+				var o: Unit = null
+				for a in M.agents:
+					if not a.dead:
+						o = a
+						break
+				if o:
+					bark("ag:down", o)
+			elif u.rival != "":
+				bark("riv:%s_death" % u.rival, u)
+			elif src is Unit and src.kind == "agente" and u.kind != "civil" and randf() < .55:
+				bark("ag:kill", src)
+		"hurt":
+			bark("ag:hurt", d.u)
+		"pickup":
+			Snd.play("pickup")
+		"alarm":
+			Snd.play("alarm")
+		"siren":
+			Snd.play("siren")
+		"hack":
+			Snd.play("hack")
+		"convert":
+			var u: Unit = d.u
+			Snd.play("convert", _world(u.x, u.y, 1))
+			if u.owner and u.owner.kind == "agente" and randf() < .5:
+				bark("ag:conv", u.owner)
+		"crash":
+			bark("ag:crash", d.u)
+		"preset":
+			Snd.play("ui")
+			if d.i == 2 and d.u:
+				bark("ag:over", d.u)
+		"rival_spot":
+			bark("riv:%s_intro" % d.u.rival, d.u)
+		"vanish":
+			var u: Unit = d.u
+			if u.rival != "":
+				bark("riv:%s_esc" % u.rival, u)
+		"pol_warn":
+			bark("pol:warn", d.u)
+		"nade":
+			if d.has("u"):
+				bark("ag:grn", d.u)
+		"end":
+			Snd.play("win" if d.win else "lose")
+
+
+func _audio(dt: float) -> void:
+	if cam:
+		var yaw := cam.global_basis.get_euler().y
+		listener.global_transform = Transform3D(Basis(Vector3.UP, yaw), cam_target + Vector3(0, 4, 0))
+	Snd.duck = vo_player.playing or M.t < comm_until
+	Snd.set_intensity(0 if M.ended else (3 if M.t - M.last_combat < 7 else (2 if M.corp_alert or M.police_aggro > 0 else 1)))
+	# motor do carro em movimento mais perto da câmera
+	var best = null
+	var bd := 30.0
+	for c in M.cars:
+		if c.get("dead", false) or c.get("cur", 0.0) < .3:
+			continue
+		var dd := Vector2(c.x * W, c.y * W).distance_to(Vector2(cam_target.x, cam_target.z))
+		if dd < bd * W:
+			bd = dd / W
+			best = c
+	if best != null:
+		Snd.engine(best.cur, _world(best.x, best.y, .8))
+	else:
+		Snd.engine(0)
+	hum_t -= dt
+	if hum_t <= 0:
+		hum_t = .5
+		for u in M.units:
+			if u.kind == "drone" and not u.dead and not u.off and _world(u.x, u.y).distance_to(cam_target) < 40:
+				Snd.play("drone", _world(u.x, u.y, 2.6), -4.0)
+				break
+	for i in M.vents.size():
+		var v: Dictionary = M.vents[i]
+		var st: int = v.get("state", 0)
+		if st == 2 and vent_state.get(i, 0) != 2:
+			Snd.play("steam", _world(v.x, v.y, .5))
+		vent_state[i] = st
+	if (M.train != null) != had_train:
+		had_train = M.train != null
+		if had_train and M.rail != null:
+			Snd.play("train", cam_target, -2.0)
 
 
 func talking() -> bool:

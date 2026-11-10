@@ -56,6 +56,13 @@ var supp := 0.0
 var supp_p := 0.0
 var contact := false
 var cloak := false
+var nr := {r = .5, p = .5, c = .5}   # mostradores neurais: reflexo, percepção, controle
+var neuro := {spd = 1.125, rof = .95, acc = 1.075, rng = 1.075, res = .15}
+var estab := 100.0
+var max_estab := 100.0
+var colapso := 0.0
+var over := 0.0        # tempo em sobrecarga (gera dependência)
+var spark_t := 0.0
 var ag = null           # agente da campanha (Dictionary)
 var warned := false
 var warn_t := 0.0

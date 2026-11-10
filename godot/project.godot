@@ -12,6 +12,7 @@ config/features=PackedStringArray("4.7", "Forward Plus")
 
 Shot="*res://scripts/dev/shot.gd"
 Camp="*res://scripts/campaign/camp.gd"
+Snd="*res://scripts/core/snd.gd"
 
 [display]
 

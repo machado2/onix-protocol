@@ -19,11 +19,13 @@ Há duas versões no repositório:
 | Carros (sedã, hatch, van, táxi, viatura) | `tools/blender/cars.py` | `godot/assets/kit/cars.glb` |
 | Árvores e palmeiras | `tools/blender/trees.py` | `godot/assets/kit/trees.glb` |
 | Personagens: humanos do MPFB2 (MakeHuman), mocap do CMU redirecionado, equipamento ajustado ao corpo, IK das mãos na arma | `tools/blender/humans.py`, `mocap.py`, `build_chars.py` | `godot/assets/chars/<nome>.glb` |
+| Efeitos sonoros, ambiente, motor e as 6 camadas da trilha dinâmica (mesma síntese da versão web, sem chuva) | `tools/sfxgen/sfxgen.py`: osciladores, biquads e reverb por FFT em numpy | `godot/assets/audio/sfx/*.wav`, `mus_*.wav`, `amb_loop.wav` (gerados, fora do git) |
 
 Para refazer tudo:
 
 ```bash
 python tools/texgen/texgen.py
+python tools/sfxgen/sfxgen.py
 B="/c/Program Files/Blender Foundation/Blender 5.2/blender.exe"
 for s in kit_arch props cars trees; do "$B" -b --factory-startup -P tools/blender/$s.py -- "$(pwd)/godot/assets/kit/${s/kit_arch/arch}.glb"; done
 sh tools/build_all_chars.sh
@@ -45,6 +47,13 @@ Sem argumentos, o jogo abre a campanha. A cidade 3D gira ao fundo dos menus.
 - **Laboratório.** 23 pesquisas em 5 áreas. Cientistas produzem PD e recebem salário.
 - **Interceptações.** Mensagens dos Ponteiros e do Conselho, e a escolha final sobre o Coral.
 
+### Mostradores neurais e áudio
+
+- **Mostradores neurais.** Cada agente tem três canais: reflexo (velocidade e cadência), percepção (precisão e alcance) e controle (discrição, resistência e força da sonda). Ficam no painel ao lado dos cartões e podem ser arrastados ou ajustados com a roda do mouse. A tecla F alterna as predefinições CONTIDO, PADRÃO e SOBRECARGA.
+- **Sobrecarga e colapso.** Passar de 1,5 no total drena a estabilidade; em zero, o agente entra em colapso. O tempo em sobrecarga vira dependência neural, que reduz a estabilidade máxima nas missões seguintes até passar pela clínica.
+- **Áudio.** Fica no autoload `Snd` (`scripts/core/snd.gd`): efeitos posicionais em 3D, trilha em camadas que muda com a intensidade (discrição, alerta, combate), ambiente noturno e vozes. As falas de agentes e do Controle passam por filtro de rádio; Ponteiros e guardas, por capacete; a polícia, por megafone. A música abaixa durante as falas.
+- **Volumes.** Ajustáveis no título e no menu de pausa, salvos em `user://config.cfg`.
+
 O estado fica em `scripts/campaign/camp.gd`, autoload `Camp`, e é salvo em `user://campanha.sav`. As telas ficam em `scripts/ui/menu.gd`. Esc pausa a missão e permite abortá-la. No fim da missão, Enter volta ao relatório.
 
 ### Rodar e capturar imagens
@@ -59,6 +68,7 @@ Opções depois de `--`:
 
 - `--mission=docas|favela|…|torre` ou `--mission=assassinato|extracao|sabotagem|eliminacao`: pula a campanha e abre uma missão de teste.
 - `--camptest=pasta [--launch=N] [--rich] [--revolt] --auto --speed=4`: percorre as telas da campanha e salva uma captura de cada uma. Com `--launch`, também joga a missão do distrito N no piloto automático e captura o relatório. Usa `user://teste.sav`.
+- `--recaudio=arquivo.wav`: grava a saída de áudio. Com `--audio-driver Dummy` não toca nada nas caixas de som.
 - `--headless -- --simtest`: testa a simulação sem gráficos (Chave Fantasma, manto, incendiária, implantes, pesquisas, resultado).
 - `--shot=arquivo.jpg --frames=120`: salva uma captura e imprime o tempo de GPU.
 - `--seed`: muda o distrito gerado.

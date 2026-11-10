@@ -323,6 +323,9 @@ func mk_agent(k: int, px: float, py: float, ag) -> Unit:
 			inv.append(q.t)
 	else:
 		inv = ag
+	if ag is Dictionary:
+		u.max_estab = maxf(40, 100 - ag.get("dep", 0))
+		u.estab = u.max_estab
 	var pm := 1.5 if Camp.has("pentes") else 1.0
 	for it in inv:
 		u.inv.append({t = it, mun = roundi(GD.WD[it].get("pente", 0) * pm)})

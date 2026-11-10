@@ -87,6 +87,11 @@ func event(kind: String, d: Dictionary) -> void:
 			_flash(_pos(u.x, u.y, 1.5), Color(.3, .9, 1), 4, 6, .4)
 		"hack":
 			_ring(_pos(d.x, d.y, .2), 3.0, Color(.3, 1, .6), .8)
+		"spark":
+			_flash(_pos(d.x + randf_range(-.15, .15), d.y + randf_range(-.15, .15), 1.6), Color(1, .65, .2), 1.2, 2.5, .15)
+		"crash":
+			var u: Unit = d.u
+			_ring(_pos(u.x, u.y, .2), 2.0, Color(1, .3, .3), .9)
 		"fire":
 			_fire(_pos(d.x, d.y, game.ground_at(d.x, d.y)), d.life)
 

@@ -72,6 +72,18 @@ func _ready() -> void:
 	ok(a2.inv.size() == 1, "granada consumida")
 	steps(sim, 14)
 	ok(M.fires.is_empty(), "fogo apagou sozinho")
+	# mostradores neurais: sobrecarga leva ao colapso e gera dependência
+	var a3: Unit = M.agents[3]
+	sim.set_sel([a3])
+	sim.set_preset(2)
+	ok(a3.nr.r == .95 and sim.preset_of(a3) == 2, "predefinição SOBRECARGA aplicada")
+	var e0 := a3.estab
+	steps(sim, 1)
+	ok(a3.estab < e0 and a3.neuro.spd > 1.4, "sobrecarga drena estabilidade (%.0f) e acelera (%.2f)" % [a3.estab, a3.neuro.spd])
+	steps(sim, 30)
+	ok(a3.colapso > 0 or a3.nr.r == .25, "colapso neural depois de sobrecarga longa")
+	ok(a3.over > 5, "tempo em sobrecarga registrado (%.1f)" % a3.over)
+	a0.over = 10
 	# resultado na campanha
 	M.win = true
 	M.ended = true
@@ -79,6 +91,7 @@ func _ready() -> void:
 	var r: Dictionary = Camp.apply_result(M, 0, false)
 	ok(Camp.G.dono[0] == "player" and r.win, "distrito conquistado no relatório")
 	ok(Camp.G.dia == 2, "dia avançou")
+	ok(Camp.agent(ag.id) == null or ag.dep == 15, "dependência neural acumulada (%d%%)" % ag.dep)
 	print("FALHAS: %d" % fails)
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(Camp.save_path))
 	get_tree().quit(fails)

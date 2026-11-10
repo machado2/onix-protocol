@@ -9,3 +9,6 @@ __pycache__/
 # Godot: cache de importação e texturas geradas (rodar tools/texgen/texgen.py)
 godot/.godot/
 godot/assets/tex/*.png
+# sons gerados (rodar tools/sfxgen/sfxgen.py)
+godot/assets/audio/sfx/*.wav
+godot/assets/audio/*.wav

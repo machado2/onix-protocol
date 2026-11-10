@@ -10,7 +10,74 @@ signal fx(kind: String, data: Dictionary)
 var M: Mission
 const N := C.N
 const T := C.T
-const NEURO := {spd = 1.125, rof = .95, acc = 1.075, rng = 1.075, res = .15}   # predefinição PADRÃO
+const PRESETS := [{n = "CONTIDO", r = .25, p = .45, c = .85}, {n = "PADRÃO", r = .5, p = .5, c = .5}, {n = "SOBRECARGA", r = .95, p = .95, c = .55}]
+
+
+## Efeito dos mostradores neurais: reflexo acelera e aumenta a cadência; percepção dá precisão e alcance;
+## controle dá resistência a dano, discrição e força na sonda. Em colapso, tudo cai.
+static func neuro_mods(u: Unit) -> Dictionary:
+	if u.colapso > 0:
+		return {spd = .5, acc = .5, rof = 1.4, rng = .9, res = 0.0}
+	var n := u.nr
+	return {spd = .75 + .75 * n.r, rof = 1.2 - .5 * n.r, acc = .75 + .65 * n.p, rng = 1 + .15 * n.p, res = .3 * n.c}
+
+
+func lit_at(px: float, py: float) -> bool:
+	var L: Array = M.lamps if not M.lamps.is_empty() else M.map.get("lamps", [])
+	for l in L:
+		if l.get("dead", false):
+			continue
+		var r := 5.0 if l.get("tall", false) else 3.2
+		if absf(l.x - px) < r and absf(l.y - py) < r and Vector2(l.x - px, l.y - py).length() < r:
+			return true
+	return false
+
+
+func set_preset(i: int) -> void:
+	var p: Dictionary = PRESETS[i]
+	for u in M.sel:
+		if u.colapso <= 0:
+			u.nr = {r = p.r, p = p.p, c = p.c}
+	fx.emit("preset", {i = i, u = M.sel[0] if not M.sel.is_empty() else null})
+
+
+func set_dial(k: String, v: float) -> void:
+	for u in M.sel:
+		if u.colapso <= 0:
+			u.nr[k] = clampf(v, 0, 1)
+
+
+func preset_of(u: Unit) -> int:
+	for i in PRESETS.size():
+		var p: Dictionary = PRESETS[i]
+		if absf(p.r - u.nr.r) < .01 and absf(p.p - u.nr.p) < .01 and absf(p.c - u.nr.c) < .01:
+			return i
+	return -1
+
+
+func upd_neuro(u: Unit, dt: float) -> void:
+	var cx: int = u.ag.imp.cortex if u.ag != null else 0
+	var load: float = u.nr.r + u.nr.p + u.nr.c - 1.5
+	if u.colapso > 0:
+		u.colapso -= dt
+		if u.colapso <= 0:
+			u.nr = {r = .25, p = .45, c = .85}
+	elif load > 0:
+		u.estab -= dt * load * 10 * (1 - cx * .2) * (.7 if Camp.has("estab") else 1.0)
+		u.over += dt * load
+		if u.estab <= 0:
+			u.estab = 0
+			u.colapso = 3.0 if Camp.has("limpa") else 6.0
+			say_log("%s entrou em colapso neural." % u.nome, "red")
+			fx.emit("crash", {u = u})
+	else:
+		u.estab = minf(u.max_estab, u.estab + dt * (3 - load * 10) * (1 + cx * .3))
+	if load > .4 and u.colapso <= 0 and u.in_car == null:
+		u.spark_t -= dt
+		if u.spark_t <= 0:
+			u.spark_t = .35 + randf() * .3
+			fx.emit("spark", {x = u.x, y = u.y})
+	u.neuro = neuro_mods(u)
 
 
 func _init(m: Mission) -> void:
@@ -150,7 +217,9 @@ func detect(u: Unit, dt: float, dr: float, hr: float) -> void:
 		if a.dead or a.cloak:
 			continue
 		var d := u.dist_to(a)
-		var r := (dr if is_armed(a) else hr) * .95
+		var r: float = (dr if is_armed(a) else hr) * (1.2 - .5 * a.nr.c)
+		if d < r * 1.4 and not lit_at(a.x, a.y):
+			r *= .72
 		if d < r and M.los(u.x, u.y, a.x, a.y):
 			alert_corp(u, a.x, a.y)
 			u.tgt = a
@@ -342,7 +411,7 @@ func hurt(v: Unit, dmg: float, src: Unit) -> void:
 	if v.hold:
 		dmg *= .3
 	if v.kind == "agente":
-		dmg *= 1 - NEURO.res
+		dmg *= 1 - v.neuro.res
 	v.hp -= dmg * (1 - v.armor * (.5 if src and src.fac == "player" and Camp.has("perfurante") else 1.0))
 	v.hit_t = .08
 	v.last_hit = M.t
@@ -359,6 +428,8 @@ func hurt(v: Unit, dmg: float, src: Unit) -> void:
 			trigger_police("A polícia testemunhou um ataque a civis.")
 	if src and src != v and v.tgt == null and v.fac != "civ" and v.fac != "neutral" and is_enemy_of(v, src):
 		v.tgt = src
+	if v.kind == "agente" and v.hp > 0 and v.hp < v.max_hp * .55:
+		fx.emit("hurt", {u = v})
 	if v.hp <= 0:
 		kill(v, src)
 
@@ -372,13 +443,13 @@ func kill(v: Unit, src: Unit) -> void:
 	v.hj = 0
 	if v.kind == "torre":
 		explode(v.x, v.y, 1.2, 25, src)
-		fx.emit("death", {u = v})
+		fx.emit("death", {u = v, src = src})
 		return
 	if v.kind == "drone":
 		explode(v.x, v.y, .9, 14, src)
 		if src and src.fac == "player" and v.fac != "player":
 			M.stats.abates += 1
-		fx.emit("death", {u = v})
+		fx.emit("death", {u = v, src = src})
 		return
 	if v.rival != "" and not v.vanished:
 		M.rival_dead.append(v.rival)
@@ -405,7 +476,7 @@ func kill(v: Unit, src: Unit) -> void:
 		say_log("Um sósia foi abatido." if v.double else "Alvo eliminado: %s." % v.nome, "amber" if v.double else "green")
 	if v.kind == "cientista":
 		say_log("%s foi morta no fogo cruzado." % v.nome, "red")
-	fx.emit("death", {u = v})
+	fx.emit("death", {u = v, src = src})
 
 
 func hurt_prop(p: Dictionary, dmg: float, src: Unit) -> void:
@@ -478,7 +549,7 @@ func convert_unit(v: Unit, owner: Unit) -> void:
 
 
 func hijack_tick(u: Unit, dt: float, w: Dictionary) -> void:
-	var pw := minf(4, 1 + .2 * M.followers) * (.7 + .6 * .5) * (1.3 if Camp.has("sonda2") else 1.0) * (1.6 if Camp.has("sonda3") else 1.0)
+	var pw: float = minf(4, 1 + .2 * M.followers) * (.7 + .6 * u.nr.c) * (1.3 if Camp.has("sonda2") else 1.0) * (1.6 if Camp.has("sonda3") else 1.0)
 	var rng: float = w.alcance + (1.0 if Camp.has("sonda2") else 0.0)
 	var any := false
 	for v in M.units:
@@ -739,6 +810,7 @@ func upd_police(u: Unit, dt: float) -> void:
 			u.lost = 0
 			if not u.warned:
 				u.warned = true
+				fx.emit("pol_warn", {u = u})
 				u.warn_t = 3.5
 				say_log("Polícia: guardem as armas (tecla H) ou haverá confronto.", "amber")
 				fx.emit("siren", {})
@@ -936,6 +1008,8 @@ func equip_first_weapon(u: Unit) -> bool:
 
 
 func upd_agent(u: Unit, dt: float) -> void:
+	upd_neuro(u, dt)
+	var NEURO: Dictionary = u.neuro
 	var reg := 2.5 if Camp.has("reparo") else (0.0 if Camp.active else 1.5)
 	if reg > 0 and u.hp < u.max_hp and M.t - u.last_hit > 5:
 		u.hp = minf(u.max_hp, u.hp + dt * reg)
@@ -957,7 +1031,7 @@ func upd_agent(u: Unit, dt: float) -> void:
 				break
 	var it = u.inv[u.eq] if u.eq >= 0 else null
 	var w: Dictionary = GD.WD[it.t] if it != null else {}
-	var spd := u.spd * NEURO.spd * (.78 if w.get("peso", false) else 1.0)
+	var spd: float = u.spd * NEURO.spd * (.78 if w.get("peso", false) else 1.0)
 	var rng: float = w.alcance * u.rng_mul * NEURO.rng if w.get("arma", false) else 0.0
 	var o = u.ord
 	if o != null:
@@ -1002,7 +1076,7 @@ func upd_agent(u: Unit, dt: float) -> void:
 					u.path = []
 					aim_at(u, o.x, o.y)
 					M.nades.append({sx = u.x, sy = u.y, tx = o.x, ty = o.y, t = 0.0, T = .5 + d * .07, src = u, wt = u.inv[ii].t})
-					fx.emit("nade", {})
+					fx.emit("nade", {u = u})
 					remove_item(u, ii)
 					if not equip_first_weapon(u):
 						u.eq = -1
@@ -1068,6 +1142,7 @@ func upd_agent(u: Unit, dt: float) -> void:
 		u.inv.append({t = d.t, mun = pente_of(u, d.t)})
 		M.drops.remove_at(i)
 		say_log("%s pegou %s." % [u.nome, GD.WD[d.t].ab], "cyan")
+		fx.emit("pickup", {u = u})
 	for tm in M.terms:
 		if tm.done or Vector2(tm.x - u.x, tm.y - u.y).length() > 1.4:
 			continue
@@ -1473,6 +1548,7 @@ func rival_tick(u: Unit, dt: float) -> bool:
 			if not u.rival in M.rival_seen:
 				M.rival_seen.append(u.rival)
 			say_log("%s, um dos Ponteiros do Consórcio, entrou no combate." % u.nome, "red")
+			fx.emit("rival_spot", {u = u})
 	if u.escaping:
 		u.esc_t -= dt
 		M.move_along(u, dt, u.spd * 1.4)

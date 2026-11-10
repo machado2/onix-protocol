@@ -166,6 +166,7 @@ func _btn(t: String, cb: Callable, pri := false, dis := false) -> Button:
 		b.theme_type_variation = "PriButton"
 	b.disabled = dis
 	b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	b.pressed.connect(func(): Snd.play("ui"))
 	b.pressed.connect(cb)
 	return b
 
@@ -429,9 +430,27 @@ func show_title() -> void:
 		b.disabled = false
 		q.add_child(b)
 	v.add_child(q)
-	var keys := _rich("[font_size=12][color=#7e8ba4]Botão esq. mover · selecionar · arrastar seleção\nBotão dir. atacar · disparar · arremessar · invadir\n1–4 agentes · Q/E armas · H guardar · Z/X girar câmera · Espaço pausa · Esc menu[/color][/font_size]", 12)
+	v.add_child(_volumes())
+	var keys := _rich("[font_size=12][color=#7e8ba4]Botão esq. mover · selecionar · arrastar seleção\nBotão dir. atacar · disparar · arremessar · invadir\n1–4 agentes · Q/E armas · H guardar · F predefinição neural · Z/X girar câmera · Espaço pausa · Esc menu[/color][/font_size]", 12)
 	v.add_child(_sep())
 	v.add_child(keys)
+
+
+func _volumes() -> HBoxContainer:
+	var h := _box(false, 10)
+	h.add_child(_lbl("SOM", 12, DIM, f_mono))
+	for k in [["mus", "Música"], ["sfx", "Efeitos"], ["vo", "Vozes"]]:
+		h.add_child(_lbl(k[1], 13, FG))
+		var s := HSlider.new()
+		s.min_value = 0
+		s.max_value = 1
+		s.step = .05
+		s.value = Snd.vol[k[0]]
+		s.custom_minimum_size = Vector2(90, 0)
+		s.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		s.value_changed.connect(func(v): Snd.set_volume(k[0], v))
+		h.add_child(s)
+	return h
 
 
 func _new_campaign() -> void:
